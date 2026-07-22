@@ -5,7 +5,6 @@ and the standalone claude-trace wrapper.
 """
 
 import json
-import os
 import re
 import sys
 import uuid
@@ -1090,7 +1089,6 @@ def log_trace(trace_dict):
     becomes available, this should be updated.
     """
     try:
-        import mlflow
         from mlflow import MlflowClient
         from mlflow.entities.trace import Trace
 

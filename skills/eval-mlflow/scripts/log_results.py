@@ -408,8 +408,9 @@ def main():
                     continue
                 step_rr = _harbor_step_run_result(case_dir, step_name,
                                                   run_result, transcript)
-                trace_name = (f"{config.skill} ({step_key})"
-                              if config.skill else step_key)
+                _skill = _resolve_skill(config)
+                trace_name = (f"{_skill} ({step_key})"
+                              if _skill else step_key)
                 traj = transcript.parent / "trajectory.json"
                 trace_dict = build_trace(
                     transcript, step_rr, step_key,
