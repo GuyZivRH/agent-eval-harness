@@ -41,6 +41,24 @@ from agent_eval.mlflow.trace_builder import build_trace, log_trace
 from agent_eval.harbor.results import _extract_transcript_metrics
 
 
+def _resolve_skill(config: EvalConfig) -> str | None:
+    """Skill name compatible with AEH v1.0.3 and newer EvalConfig APIs."""
+    if hasattr(config, "resolve_skill"):
+        return config.resolve_skill()
+    return getattr(config, "skill", None) or None
+
+
+def _eval_name(config: EvalConfig) -> str:
+    """Eval subdirectory name compatible with AEH v1.0.3 and newer APIs."""
+    if hasattr(config, "eval_name"):
+        return config.eval_name()
+    return (
+        getattr(config, "skill", None)
+        or getattr(config, "name", None)
+        or "eval"
+    )
+
+
 def _is_within(path, root):
     """True if ``path`` resolves to ``root`` or a descendant (symlinks resolved)."""
     try:
@@ -172,7 +190,7 @@ def main():
     config = EvalConfig.from_yaml(args.config)
     mlflow.set_tracking_uri(resolve_tracking_uri(config))
     runs_base = Path(os.environ.get("AGENT_EVAL_RUNS_DIR", "eval/runs"))
-    runs_dir = runs_base / config.eval_name()
+    runs_dir = runs_base / _eval_name(config)
     run_dir = runs_dir / args.run_id
 
     # Load summary
@@ -205,8 +223,8 @@ def main():
 
         # ── Params ───────────────────────────────────────────────
         params = {
-            "skill": config.resolve_skill(),
-            "eval_name": config.eval_name(),
+            "skill": _resolve_skill(config),
+            "eval_name": _eval_name(config),
             "runner": config.runner.type,
             "run_id": args.run_id,
             "model": run_result.get("model", ""),
@@ -362,7 +380,7 @@ def main():
                 if case_id in case_trace_map:
                     continue
                 case_result = run_result.get("per_case", {}).get(case_id, run_result)
-                _skill = config.resolve_skill()
+                _skill = _resolve_skill(config)
                 trace_name = f"{_skill} ({case_id})" if _skill else case_id
                 trace_dict = build_trace(case_stdout, case_result, case_id,
                                          experiment_id, trace_name=trace_name)
@@ -411,8 +429,8 @@ def main():
     else:
         stdout_path = run_dir / "stdout.log"
         if stdout_path.exists() and run_result:
-            _skill = config.resolve_skill()
-            trace_name = f"{_skill} ({args.run_id})" if _skill else config.eval_name()
+            _skill = _resolve_skill(config)
+            trace_name = f"{_skill} ({args.run_id})" if _skill else _eval_name(config)
             trace_dict = build_trace(stdout_path, run_result, args.run_id,
                                      experiment_id, trace_name=trace_name)
             if trace_dict:

@@ -64,21 +64,32 @@ def _user_text_from_content(content):
     return ""
 
 
+_MAX_TOOL_OUTPUT = 4000  # chars per tool result (stream or ATIF-enriched)
+_MAX_WRITE_CONTENT = 4000
+_MAX_EDIT_FRAGMENT = 2000
+
+
+def _load_trajectory_json(trajectory_path):
+    """Load ATIF trajectory.json as a dict, or None."""
+    if trajectory_path is None:
+        return None
+    path = Path(trajectory_path)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _load_trajectory_user_steps(trajectory_path):
     """Load user steps from a Harbor ATIF trajectory.json (if present).
 
     Returns a list of ``{"message": str, "timestamp": str|None}``.
     """
-    if trajectory_path is None:
-        return []
-    path = Path(trajectory_path)
-    if not path.is_file():
-        return []
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return []
-    if not isinstance(data, dict):
+    data = _load_trajectory_json(trajectory_path)
+    if not data:
         return []
     steps = data.get("steps") or []
     out = []
@@ -95,6 +106,46 @@ def _load_trajectory_user_steps(trajectory_path):
             "timestamp": step.get("timestamp"),
         })
     return out
+
+
+def _load_trajectory_tool_data(trajectory_path):
+    """Index ATIF agent tool_calls and observations by tool id.
+
+    Returns ``(tool_args, tool_results)`` where:
+      - tool_args: tool_call_id -> arguments dict
+      - tool_results: source_call_id -> richer result string
+    """
+    data = _load_trajectory_json(trajectory_path)
+    if not data:
+        return {}, {}
+    tool_args = {}
+    tool_results = {}
+    for step in data.get("steps") or []:
+        if not isinstance(step, dict) or step.get("source") != "agent":
+            continue
+        for call in step.get("tool_calls") or []:
+            if not isinstance(call, dict):
+                continue
+            tuid = call.get("tool_call_id") or ""
+            args = call.get("arguments")
+            if tuid and isinstance(args, dict):
+                tool_args[tuid] = args
+        obs = step.get("observation") or {}
+        if not isinstance(obs, dict):
+            continue
+        for result in obs.get("results") or []:
+            if not isinstance(result, dict):
+                continue
+            tuid = result.get("source_call_id") or ""
+            if not tuid:
+                continue
+            content = result.get("content")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            # Prefer observation content (often includes [metadata] JSON
+            # with Write file body) over the short stream-json success line.
+            tool_results[tuid] = content.strip()[:_MAX_TOOL_OUTPUT]
+    return tool_args, tool_results
 
 
 def build_trace(stdout_path, run_result, run_id, experiment_id,
@@ -190,10 +241,13 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
             if final_response:
                 break
 
+    # ATIF trajectory tool args / richer observations (Harbor).
+    traj_tool_args, traj_tool_results = _load_trajectory_tool_data(
+        trajectory_path)
+
     # ── Build tool_result timestamp and content lookups ─────────
     tool_result_ns = {}  # tool_use_id -> timestamp_ns
     tool_result_content = {}  # tool_use_id -> truncated output string
-    _MAX_TOOL_OUTPUT = 500  # chars per tool result
     for e in events:
         if e.get("type") != "user":
             continue
@@ -222,6 +276,12 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
                         if text:
                             tool_result_content[tuid] = (
                                 text[:_MAX_TOOL_OUTPUT])
+
+    # Prefer richer ATIF observation text when available.
+    for tuid, text in traj_tool_results.items():
+        existing = tool_result_content.get(tuid, "")
+        if len(text) > len(existing):
+            tool_result_content[tuid] = text
 
     # ── Override timestamps for background agents ───────────────
     # Background agents return an immediate "async launched" tool_result,
@@ -678,13 +738,26 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         else:
             step_name = "Setup"
 
+        step_tool_names = []
+        for _, _, batch, _ in batch_timings:
+            for _, _, name, _ in batch:
+                step_tool_names.append(name)
+        step_inputs = {"step": step_idx + 1}
+        if step_tool_names:
+            step_inputs["tools"] = step_tool_names
+        step_outputs = {}
+        if llm_text:
+            step_outputs["text"] = llm_text
+        if thinkings:
+            step_outputs["thinking"] = thinkings[0][0]
         step_span = make_span(
             trace_id, root_span_id,
             name=step_name,
             span_type="AGENT",
             start_ns=step_start,
             end_ns=step_end,
-            inputs={"step": step_idx + 1},
+            inputs=step_inputs,
+            outputs=step_outputs or None,
         )
         step_span_id = step_span["span_id"]
         spans.append(step_span)
@@ -754,6 +827,20 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
             for (_, tuid, name, inp), end_ns in zip(batch, batch_ends):
                 child_end = end_ns if end_ns else b_end
                 span_type = "AGENT" if name == "Agent" else "TOOL"
+                # Merge richer ATIF tool arguments when stream input is thin.
+                merged_inp = inp if isinstance(inp, dict) else {}
+                traj_args = traj_tool_args.get(tuid)
+                if isinstance(traj_args, dict):
+                    merged_inp = {**traj_args, **merged_inp}
+                    # Prefer traj values that stream omitted or left empty.
+                    for k, v in traj_args.items():
+                        if k not in merged_inp or merged_inp.get(k) in (
+                                None, "", {}, []):
+                            merged_inp[k] = v
+                        elif (isinstance(v, str) and isinstance(
+                                merged_inp.get(k), str)
+                              and len(v) > len(merged_inp[k])):
+                            merged_inp[k] = v
                 # Include tool result content as span output
                 tool_output = None
                 if tuid in tool_result_content:
@@ -764,7 +851,7 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
                     span_type=span_type,
                     start_ns=b_start,
                     end_ns=child_end,
-                    inputs=summarize_tool_input(name, inp),
+                    inputs=summarize_tool_input(name, merged_inp),
                     outputs=tool_output,
                 )
                 spans.append(tool_span)
@@ -955,11 +1042,32 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
 
 
 def summarize_tool_input(tool_name, tool_input):
-    """One-line summary of a tool call for span display."""
+    """Compact tool-call payload for span display (keeps file bodies)."""
+    tool_input = tool_input if isinstance(tool_input, dict) else {}
     if tool_name == "Bash":
         return {"command": tool_input.get("command", "")[:200]}
-    elif tool_name in ("Write", "Edit", "Read"):
-        return {"file_path": tool_input.get("file_path", "")}
+    elif tool_name == "Write":
+        out = {"file_path": tool_input.get("file_path", "")}
+        content = tool_input.get("content")
+        if isinstance(content, str) and content:
+            out["content"] = content[:_MAX_WRITE_CONTENT]
+        return out
+    elif tool_name == "Edit":
+        out = {"file_path": tool_input.get("file_path", "")}
+        old = tool_input.get("old_string")
+        new = tool_input.get("new_string")
+        if isinstance(old, str) and old:
+            out["old_string"] = old[:_MAX_EDIT_FRAGMENT]
+        if isinstance(new, str) and new:
+            out["new_string"] = new[:_MAX_EDIT_FRAGMENT]
+        return out
+    elif tool_name == "Read":
+        out = {"file_path": tool_input.get("file_path", "")}
+        if tool_input.get("offset") is not None:
+            out["offset"] = tool_input.get("offset")
+        if tool_input.get("limit") is not None:
+            out["limit"] = tool_input.get("limit")
+        return out
     elif tool_name == "Agent":
         return {"description": tool_input.get("description", "")}
     elif tool_name == "Skill":
