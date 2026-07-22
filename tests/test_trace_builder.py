@@ -199,3 +199,124 @@ class TestBuildTrace:
         ]
         assert any("/aeh-hello-world" in m for m in messages)
         assert any("Hello, World!" in m for m in messages)
+
+    def test_write_tool_span_includes_file_content(self, tmp_path):
+        """Write TOOL span inputs keep the file body, not just file_path."""
+        events = [
+            make_system_init(),
+            make_assistant(
+                "msg_001",
+                thinking="Write hello.py",
+                tools=[("Write", "tu_001",
+                        {"file_path": "/workspace/hello.py",
+                         "content": 'print("Hello, World!")\n'})],
+            ),
+            make_user(tool_results=[("tu_001", "File created")]),
+            make_assistant("msg_002", text="Created hello.py"),
+            make_result(cost_usd=0.10, num_turns=2),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        trace = build_trace(stdout, _basic_run_result(),
+                            run_id="test-run", experiment_id="exp-001")
+        write = next(s for s in trace["data"]["spans"] if s["name"] == "Write")
+        inputs = json.loads(write["attributes"]["mlflow.spanInputs"])
+        assert inputs["file_path"] == "/workspace/hello.py"
+        assert 'print("Hello, World!")' in inputs["content"]
+
+    def test_trajectory_observation_enriches_tool_output(self, tmp_path):
+        """ATIF observation content replaces a short stream tool_result."""
+        events = [
+            make_system_init(),
+            make_assistant(
+                "msg_001",
+                thinking="Write the file.",
+                # Stream omits content; trajectory supplies full args + observation.
+                tools=[("Write", "tu_001", {"file_path": "/workspace/hello.py"})],
+            ),
+            make_user(tool_results=[("tu_001", "File created successfully")]),
+            make_assistant("msg_002", text="Created hello.py"),
+            make_result(cost_usd=0.10, num_turns=2),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        rich = (
+            "File created successfully at: /workspace/hello.py\n\n"
+            '[metadata] {"type": "create", "filePath": "/workspace/hello.py", '
+            '"content": "print(\\"Hello, World!\\")\\n"}'
+        )
+        traj = tmp_path / "trajectory.json"
+        traj.write_text(json.dumps({
+            "schema_version": "ATIF-v1.7",
+            "steps": [
+                {
+                    "step_id": 1,
+                    "source": "user",
+                    "message": "Create hello.py",
+                },
+                {
+                    "step_id": 2,
+                    "source": "agent",
+                    "tool_calls": [{
+                        "tool_call_id": "tu_001",
+                        "function_name": "Write",
+                        "arguments": {
+                            "file_path": "/workspace/hello.py",
+                            "content": 'print("Hello, World!")\n',
+                        },
+                    }],
+                    "observation": {
+                        "results": [{
+                            "source_call_id": "tu_001",
+                            "content": rich,
+                        }],
+                    },
+                },
+            ],
+        }))
+        trace = build_trace(
+            stdout, _basic_run_result(),
+            run_id="test-run", experiment_id="exp-001",
+            trajectory_path=traj,
+        )
+        write = next(s for s in trace["data"]["spans"] if s["name"] == "Write")
+        inputs = json.loads(write["attributes"]["mlflow.spanInputs"])
+        outputs = json.loads(write["attributes"]["mlflow.spanOutputs"])
+        assert 'print("Hello, World!")' in inputs["content"]
+        assert "Hello, World!" in outputs["result"]
+        assert "[metadata]" in outputs["result"]
+
+    def test_agent_step_spans_include_outputs(self, tmp_path):
+        """AGENT step spans expose text/thinking and tool names."""
+        events = [
+            make_system_init(),
+            make_assistant(
+                "msg_001",
+                thinking="I should write a hello world file.",
+                tools=[("Write", "tu_001",
+                        {"file_path": "/workspace/hello.py",
+                         "content": 'print("Hi")\n'})],
+            ),
+            make_user(tool_results=[("tu_001", "ok")]),
+            make_assistant("msg_002", text="Created hello.py"),
+            make_result(cost_usd=0.10, num_turns=2),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        trace = build_trace(stdout, _basic_run_result(),
+                            run_id="test-run", experiment_id="exp-001")
+        agent_steps = [
+            s for s in trace["data"]["spans"]
+            if _get_span_type(s) == "AGENT" and s["parent_span_id"] is not None
+        ]
+        assert agent_steps
+        # At least one step should carry thinking or final text in outputs.
+        outputs_list = [
+            json.loads(s["attributes"].get("mlflow.spanOutputs", "{}"))
+            for s in agent_steps
+            if "mlflow.spanOutputs" in s["attributes"]
+        ]
+        assert any(o.get("thinking") or o.get("text") for o in outputs_list)
+        # The write step should list Write among tools.
+        inputs_list = [
+            json.loads(s["attributes"]["mlflow.spanInputs"])
+            for s in agent_steps
+        ]
+        assert any("Write" in (i.get("tools") or []) for i in inputs_list)
