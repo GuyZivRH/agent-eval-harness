@@ -110,3 +110,92 @@ class TestBuildTrace:
                              _basic_run_result(),
                              run_id="x", experiment_id="e")
         assert result is None
+
+    def test_thinking_blocks_become_llm_spans(self, tmp_path):
+        """Extended thinking content blocks are emitted as thinking LLM spans."""
+        events = [
+            make_system_init(),
+            make_assistant(
+                "msg_001",
+                thinking="I should write a hello world file.",
+                tools=[("Write", "tu_001",
+                        {"file_path": "/workspace/hello.py",
+                         "content": 'print("Hello")\n'})],
+            ),
+            make_user(tool_results=[("tu_001", "File created")]),
+            make_assistant("msg_002", text="Created hello.py"),
+            make_result(cost_usd=0.10, num_turns=2),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        trace = build_trace(stdout, _basic_run_result(),
+                            run_id="test-run", experiment_id="exp-001")
+        assert trace is not None
+        spans = trace["data"]["spans"]
+        thinking = [s for s in spans if s["name"] == "thinking"]
+        assert len(thinking) == 1
+        outputs = json.loads(thinking[0]["attributes"]["mlflow.spanOutputs"])
+        assert "hello world" in outputs["thinking"]
+
+    def test_trajectory_user_steps_seed_prompt_and_chain_spans(self, tmp_path):
+        """Harbor trajectory.json user steps become root prompt + CHAIN spans."""
+        events = [
+            make_system_init(),
+            # Harbor-like: no user text in stream-json, only tool_result user event
+            make_assistant(
+                "msg_001",
+                thinking="Plan the file write.",
+                tools=[("Write", "tu_001", {"file_path": "/x", "content": "x"})],
+            ),
+            make_user(tool_results=[("tu_001", "ok")]),
+            make_assistant("msg_002", text="Created /x"),
+            make_result(cost_usd=0.10, num_turns=2),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        traj = tmp_path / "trajectory.json"
+        traj.write_text(json.dumps({
+            "schema_version": "ATIF-v1.7",
+            "steps": [
+                {
+                    "step_id": 1,
+                    "timestamp": "2026-04-14T19:59:59.000Z",
+                    "source": "user",
+                    "message": "<command-name>/aeh-hello-world</command-name>",
+                },
+                {
+                    "step_id": 2,
+                    "timestamp": "2026-04-14T19:59:59.100Z",
+                    "source": "user",
+                    "message": "Create a simple Hello, World! Python program.",
+                },
+                {
+                    "step_id": 3,
+                    "source": "agent",
+                    "message": "Created /x",
+                    "reasoning_content": "Plan the file write.",
+                },
+            ],
+        }))
+        trace = build_trace(
+            stdout, _basic_run_result(),
+            run_id="test-run", experiment_id="exp-001",
+            trajectory_path=traj,
+        )
+        assert trace is not None
+        root = next(s for s in trace["data"]["spans"] if s["parent_span_id"] is None)
+        root_inputs = json.loads(root["attributes"]["mlflow.spanInputs"])
+        assert "/aeh-hello-world" in root_inputs["prompt"]
+        assert "Hello, World!" in root_inputs["prompt"]
+        # Must not fall back to the assistant's final text as the prompt
+        assert root_inputs["prompt"] != "Created /x"
+
+        user_spans = [
+            s for s in trace["data"]["spans"]
+            if _get_span_type(s) == "CHAIN" and s["name"].startswith("user:")
+        ]
+        assert len(user_spans) == 2
+        messages = [
+            json.loads(s["attributes"]["mlflow.spanOutputs"])["message"]
+            for s in user_spans
+        ]
+        assert any("/aeh-hello-world" in m for m in messages)
+        assert any("Hello, World!" in m for m in messages)

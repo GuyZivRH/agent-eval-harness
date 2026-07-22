@@ -48,21 +48,71 @@ def make_span(trace_id, parent_id, name, span_type, start_ns, end_ns,
     }
 
 
+def _user_text_from_content(content):
+    """Extract plain user text from a stream-json message content field."""
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for b in content:
+            if isinstance(b, dict) and b.get("type") == "text":
+                text = (b.get("text") or "").strip()
+                if text:
+                    parts.append(text)
+        if parts:
+            return "\n\n".join(parts)
+    return ""
+
+
+def _load_trajectory_user_steps(trajectory_path):
+    """Load user steps from a Harbor ATIF trajectory.json (if present).
+
+    Returns a list of ``{"message": str, "timestamp": str|None}``.
+    """
+    if trajectory_path is None:
+        return []
+    path = Path(trajectory_path)
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    steps = data.get("steps") or []
+    out = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if step.get("source") != "user":
+            continue
+        msg = step.get("message")
+        if not isinstance(msg, str) or not msg.strip():
+            continue
+        out.append({
+            "message": msg.strip(),
+            "timestamp": step.get("timestamp"),
+        })
+    return out
+
+
 def build_trace(stdout_path, run_result, run_id, experiment_id,
                 trace_name="", subagent_dir=None,
-                subagent_model=None):
+                subagent_model=None, trajectory_path=None):
     """Build a hierarchical MLflow Trace from the stream-json stdout log.
 
     Structure:
       root AGENT
-        ├── LLM (text response)
-        ├── TOOL (single sequential tool call)
-        ├── TASK "N parallel agents" (group of parallel calls)
-        │   ├── AGENT (subagent 1)
-        │   ├── AGENT (subagent 2)
-        │   └── ...
-        ├── LLM (text response)
+        ├── CHAIN user (skill invoke / instructions; from trajectory or stream)
+        ├── AGENT step
+        │   ├── LLM thinking
+        │   ├── TOOL ...
+        │   └── LLM response
         └── ...
+
+    Harbor runs often omit user text from stream-json; pass ``trajectory_path``
+    (ATIF ``trajectory.json``) to restore user turns and the root prompt.
 
     Returns a dict suitable for Trace.from_dict(), or None.
     """
@@ -86,29 +136,36 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
     session_id = None
     prompt = ""
     final_response = ""
+    stream_user_turns = []
 
     for e in events:
         if not session_id:
             session_id = e.get("session_id")
 
     # Prompt: prefer first user text message (the skill invocation).
-    # Fall back to first assistant text if no user text is found
-    # (older runs without the synthetic prompt event).
+    # Harbor stream-json often has only tool_result user events — then fall
+    # back to trajectory.json user steps, then first assistant text.
     for e in events:
-        if e.get("type") == "user":
-            content = e.get("message", {}).get("content", "")
-            if isinstance(content, str) and content.strip():
-                prompt = content.strip()
-                break
-            elif isinstance(content, list):
-                for b in content:
-                    if isinstance(b, dict) and b.get("type") == "text":
-                        text = b.get("text", "").strip()
-                        if text:
-                            prompt = text
-                            break
-                if prompt:
-                    break
+        if e.get("type") != "user":
+            continue
+        text = _user_text_from_content(e.get("message", {}).get("content", ""))
+        if text:
+            stream_user_turns.append({
+                "message": text,
+                "timestamp": e.get("timestamp"),
+            })
+            if not prompt:
+                prompt = text
+
+    traj_user_turns = _load_trajectory_user_steps(trajectory_path)
+    if traj_user_turns:
+        # Trajectory is the richer Harbor source of truth for user turns.
+        if not prompt:
+            prompt = "\n\n".join(t["message"] for t in traj_user_turns)
+        user_turns_for_spans = traj_user_turns
+    else:
+        user_turns_for_spans = stream_user_turns
+
     if not prompt:
         for e in events:
             if e.get("type") == "assistant":
@@ -395,7 +452,11 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
             for b in content:
                 if not isinstance(b, dict):
                     continue
-                if b.get("type") == "text" and b.get("text", "").strip():
+                if b.get("type") == "thinking" and (b.get("thinking") or "").strip():
+                    _flush_batch()
+                    segments.append(("thinking", b["thinking"].strip(),
+                                     e.get("timestamp"), None))
+                elif b.get("type") == "text" and b.get("text", "").strip():
                     _flush_batch()
                     context = "; ".join(_recent_tools) if _recent_tools else ""
                     segments.append(("llm", b["text"].strip(),
@@ -477,8 +538,27 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         "attributes": root_attrs,
     }]
 
+    # User turns as CHAIN spans under root (visible in the MLflow graph).
+    user_cursor = trace_start
+    for idx, turn in enumerate(user_turns_for_spans):
+        ts = turn.get("timestamp")
+        start_ns = iso_to_ns(ts) if ts else user_cursor
+        end_ns = start_ns + int(0.1e9)
+        user_cursor = end_ns
+        msg = turn["message"]
+        first_line = msg.split("\n")[0].strip()[:80] or f"user-{idx + 1}"
+        spans.append(make_span(
+            trace_id, root_span_id,
+            name=f"user: {first_line}",
+            span_type="CHAIN",
+            start_ns=start_ns,
+            end_ns=end_ns,
+            inputs={"role": "user", "turn": idx + 1},
+            outputs={"message": msg},
+        ))
+
     # ── Group segments into agent steps ───────────────────────────
-    # Each step = one LLM reasoning output + the tool actions it triggered.
+    # Each step = optional thinking + one LLM text output + tool actions.
     # Steps are direct children of root; tools are nested inside steps.
     #
     # Segments before the first LLM text (e.g. initial tool calls from
@@ -498,11 +578,14 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         re.IGNORECASE,
     )
 
-    steps = []  # list of (llm_text, llm_ts, llm_context, [batch_segments])
+    # list of (llm_text, llm_ts, llm_context, [batch_segments], [thinkings])
+    # thinkings: list of (text, timestamp)
+    steps = []
     current_llm = None
     current_ts = None
     current_context = []
     current_batches = []
+    current_thinkings = []
     # Track whether the current step launched background agents
     _has_bg_agents = False
 
@@ -511,17 +594,25 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         first_line = text.split("\n")[0].strip()
         return bool(_STATUS_RE.match(first_line) or _WAITING_RE.search(first_line))
 
+    def _flush_step():
+        nonlocal current_llm, current_ts, current_context, current_batches
+        nonlocal current_thinkings, _has_bg_agents
+        if current_llm is not None or current_batches or current_thinkings:
+            steps.append((current_llm, current_ts, current_context,
+                          current_batches, current_thinkings))
+            current_batches = []
+            current_thinkings = []
+            _has_bg_agents = False
+
     for seg_type, seg_data, *rest in segments:
-        if seg_type == "llm":
+        if seg_type == "thinking":
+            current_thinkings.append((seg_data, rest[0] if rest else None))
+        elif seg_type == "llm":
             if _has_bg_agents and _is_status_update(seg_data):
                 # Merge status update into the current dispatch step
                 continue
             # Save previous step
-            if current_llm is not None or current_batches:
-                steps.append((current_llm, current_ts, current_context,
-                              current_batches))
-                current_batches = []
-                _has_bg_agents = False
+            _flush_step()
             current_llm = seg_data
             current_ts = rest[0] if rest else None
             current_context = rest[1] if len(rest) > 1 else []
@@ -531,16 +622,19 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
             if any(name == "Agent" for _, _, name, _ in seg_data):
                 _has_bg_agents = True
     # Flush final step
-    if current_llm is not None or current_batches:
-        steps.append((current_llm, current_ts, current_context,
-                      current_batches))
+    _flush_step()
 
     # ── Build spans from steps ──────────────────────────────────
     cursor_ns = trace_start
 
-    for step_idx, (llm_text, llm_ts, llm_context, batches) in enumerate(steps):
+    for step_idx, (llm_text, llm_ts, llm_context, batches, thinkings) in enumerate(steps):
         # Compute step timing from its children
-        step_start = iso_to_ns(llm_ts) if llm_ts else cursor_ns
+        if llm_ts:
+            step_start = iso_to_ns(llm_ts)
+        elif thinkings and thinkings[0][1]:
+            step_start = iso_to_ns(thinkings[0][1])
+        else:
+            step_start = cursor_ns
         step_end = step_start
 
         # Pre-compute batch timing to find step_end
@@ -567,11 +661,20 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         if step_end <= step_start:
             step_end = step_start + int(1e9)
 
-        # Step label from first line of LLM text
+        # Include thinking timestamps in step window
+        for think_text, think_ts in thinkings:
+            if think_ts:
+                t_ns = iso_to_ns(think_ts)
+                step_start = min(step_start, t_ns) if step_start else t_ns
+                step_end = max(step_end, t_ns + int(0.5e9))
+
+        # Step label from first line of LLM text (or thinking / Setup)
         if llm_text:
             first_line = llm_text.split("\n")[0].strip()
             # Strip markdown headers
             step_name = first_line.lstrip("#").strip()[:80]
+        elif thinkings:
+            step_name = thinkings[0][0].split("\n")[0].strip()[:80] or "thinking"
         else:
             step_name = "Setup"
 
@@ -585,6 +688,24 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         )
         step_span_id = step_span["span_id"]
         spans.append(step_span)
+
+        # Thinking spans (extended thinking / reasoning_content)
+        think_cursor = step_start
+        for think_text, think_ts in thinkings:
+            t_start = iso_to_ns(think_ts) if think_ts else think_cursor
+            t_end = t_start + int(0.5e9)
+            think_cursor = t_end
+            spans.append(make_span(
+                trace_id, step_span_id,
+                name="thinking",
+                span_type="LLM",
+                start_ns=t_start,
+                end_ns=t_end,
+                inputs={"model": model, "kind": "thinking"},
+                outputs={"thinking": think_text},
+                extra_attrs=({"mlflow.llm.model": json.dumps(model)}
+                             if model else None),
+            ))
 
         # LLM span inside the step
         if llm_text:
