@@ -392,9 +392,13 @@ def main():
                                                   run_result, transcript)
                 trace_name = (f"{config.skill} ({step_key})"
                               if config.skill else step_key)
-                trace_dict = build_trace(transcript, step_rr, step_key,
-                                         experiment_id, trace_name=trace_name,
-                                         subagent_dir=sub_dir)
+                traj = transcript.parent / "trajectory.json"
+                trace_dict = build_trace(
+                    transcript, step_rr, step_key,
+                    experiment_id, trace_name=trace_name,
+                    subagent_dir=sub_dir,
+                    trajectory_path=traj if traj.is_file() else None,
+                )
                 if trace_dict:
                     tid = log_trace(trace_dict)
                     if tid:
