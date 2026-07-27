@@ -1,3 +1,11 @@
+## [1.22.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.22.0...v1.22.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* cover interactive idle-SIGTERM in session lifecycle warning ([00e8bb9](https://github.com/opendatahub-io/agent-eval-harness/commit/00e8bb978ff298061f82e851941080ded4d334bb))
+* require polling after backgrounded execute.py to prevent false-green CI ([b4cf178](https://github.com/opendatahub-io/agent-eval-harness/commit/b4cf178d633cb2861851b3c4bd2a4520ef66b650)), closes [#155](https://github.com/opendatahub-io/agent-eval-harness/issues/155)
+
 # [1.22.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.21.0...v1.22.0) (2026-07-10)
 
 
