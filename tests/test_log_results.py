@@ -5,7 +5,16 @@ import pytest
 try:
     from log_results import _is_within, _safe_trajectory_path
     _has_mlflow = True
-except (ImportError, SystemExit):
+except ModuleNotFoundError as exc:
+    # Skip only when mlflow itself is missing; re-raise unrelated import errors
+    # so path-safety regressions are never silently skipped.
+    if exc.name != "mlflow":
+        raise
+    _has_mlflow = False
+except SystemExit as exc:
+    # log_results.py calls sys.exit(0) when mlflow is missing at import time.
+    if exc.code not in (0, None):
+        raise
     _has_mlflow = False
 
 
