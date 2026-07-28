@@ -89,6 +89,19 @@ def _resolve_harbor_job_dir(raw, run_dir):
     return None
 
 
+def _safe_trajectory_path(transcript, job_root):
+    """Resolve <transcript-dir>/trajectory.json, rejecting symlinks/escapes.
+
+    trajectory.json lives alongside the Claude transcript in Harbor's job
+    output; guard it the same way as the other harbor-job paths (CWE-22/CWE-59)
+    so a tampered or symlinked file can't smuggle unrelated data into traces.
+    """
+    traj = transcript.parent / "trajectory.json"
+    if traj.is_file() and not traj.is_symlink() and _is_within(traj, job_root):
+        return traj
+    return None
+
+
 def _harbor_steps(job_dir):
     """Yield (case_id, case_dir, step_name, transcript_path, subagent_dir) per step.
 
@@ -411,12 +424,11 @@ def main():
                 _skill = _resolve_skill(config)
                 trace_name = (f"{_skill} ({step_key})"
                               if _skill else step_key)
-                traj = transcript.parent / "trajectory.json"
                 trace_dict = build_trace(
                     transcript, step_rr, step_key,
                     experiment_id, trace_name=trace_name,
                     subagent_dir=sub_dir,
-                    trajectory_path=traj if traj.is_file() else None,
+                    trajectory_path=_safe_trajectory_path(transcript, job_dir),
                 )
                 if trace_dict:
                     tid = log_trace(trace_dict)
