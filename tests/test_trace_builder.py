@@ -412,3 +412,98 @@ class TestBuildTrace:
         assert "file B next" not in step_a.get("thinking", "")
         assert "file B next" in step_b.get("thinking", "")
         assert "file A first" not in step_b.get("thinking", "")
+
+    def test_chain_span_clamped_to_trace_window(self, tmp_path):
+        """A trajectory timestamp far outside the trace window gets clamped."""
+        events = [
+            make_system_init(),
+            make_assistant("msg_001", text="Created /x"),
+            make_result(cost_usd=0.10, num_turns=1),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        traj = tmp_path / "trajectory.json"
+        traj.write_text(json.dumps({
+            "schema_version": "ATIF-v1.7",
+            "steps": [
+                {
+                    # Clock way before the stream-json events (skewed source).
+                    "timestamp": "1970-01-01T00:00:00.000Z",
+                    "source": "user",
+                    "message": "Create a simple Hello, World! Python program.",
+                },
+            ],
+        }))
+        trace = build_trace(
+            stdout, _basic_run_result(),
+            run_id="test-run", experiment_id="exp-001",
+            trajectory_path=traj,
+        )
+        root = next(s for s in trace["data"]["spans"] if s["parent_span_id"] is None)
+        user_span = next(
+            s for s in trace["data"]["spans"]
+            if _get_span_type(s) == "CHAIN" and s["name"].startswith("user:")
+        )
+        assert user_span["start_time_unix_nano"] >= root["start_time_unix_nano"]
+        assert user_span["end_time_unix_nano"] <= root["end_time_unix_nano"]
+
+    def test_reasoning_content_backfills_thinking_when_stream_has_none(self, tmp_path):
+        """ATIF reasoning_content fills in thinking when the stream has none."""
+        events = [
+            make_system_init(),
+            make_assistant("msg_001", text="Writing file A now.",
+                           tools=[("Write", "tu_001",
+                                   {"file_path": "/x", "content": "a = 1\n"})]),
+            make_user(tool_results=[("tu_001", "ok")]),
+            make_assistant("msg_002", text="Done."),
+            make_result(cost_usd=0.10, num_turns=2),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        traj = tmp_path / "trajectory.json"
+        traj.write_text(json.dumps({
+            "schema_version": "ATIF-v1.7",
+            "steps": [
+                {
+                    "source": "agent",
+                    "reasoning_content": "Backfilled plan for file A.",
+                },
+            ],
+        }))
+        trace = build_trace(
+            stdout, _basic_run_result(),
+            run_id="test-run", experiment_id="exp-001",
+            trajectory_path=traj,
+        )
+        thinking_spans = [s for s in trace["data"]["spans"] if s["name"] == "thinking"]
+        assert len(thinking_spans) == 1
+        outputs = json.loads(thinking_spans[0]["attributes"]["mlflow.spanOutputs"])
+        assert "Backfilled plan for file A" in outputs["thinking"]
+
+    def test_reasoning_content_does_not_override_existing_stream_thinking(self, tmp_path):
+        """Trajectory reasoning_content is ignored when stream already has thinking."""
+        events = [
+            make_system_init(),
+            make_assistant("msg_001", thinking="Real stream thinking.",
+                           text="Writing file A now.",
+                           tools=[("Write", "tu_001",
+                                   {"file_path": "/x", "content": "a = 1\n"})]),
+            make_user(tool_results=[("tu_001", "ok")]),
+            make_assistant("msg_002", text="Done."),
+            make_result(cost_usd=0.10, num_turns=2),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        traj = tmp_path / "trajectory.json"
+        traj.write_text(json.dumps({
+            "schema_version": "ATIF-v1.7",
+            "steps": [
+                {"source": "agent", "reasoning_content": "Should not appear."},
+            ],
+        }))
+        trace = build_trace(
+            stdout, _basic_run_result(),
+            run_id="test-run", experiment_id="exp-001",
+            trajectory_path=traj,
+        )
+        thinking_spans = [s for s in trace["data"]["spans"] if s["name"] == "thinking"]
+        assert len(thinking_spans) == 1
+        outputs = json.loads(thinking_spans[0]["attributes"]["mlflow.spanOutputs"])
+        assert outputs["thinking"] == "Real stream thinking."
