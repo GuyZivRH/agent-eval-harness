@@ -66,6 +66,7 @@ def _user_text_from_content(content):
 _MAX_TOOL_OUTPUT = 4000  # chars per tool result (stream or ATIF-enriched)
 _MAX_WRITE_CONTENT = 4000
 _MAX_EDIT_FRAGMENT = 2000
+_MAX_THINKING = 4000
 
 
 def _load_trajectory_json(trajectory_path):
@@ -210,8 +211,9 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
     traj_user_turns = _load_trajectory_user_steps(trajectory_path)
     if traj_user_turns:
         # Trajectory is the richer Harbor source of truth for user turns.
-        if not prompt:
-            prompt = "\n\n".join(t["message"] for t in traj_user_turns)
+        # Always derive prompt from it here too, so the root span's prompt
+        # attribute and the "user:" CHAIN spans agree on the same source.
+        prompt = "\n\n".join(t["message"] for t in traj_user_turns)
         user_turns_for_spans = traj_user_turns
     else:
         user_turns_for_spans = stream_user_turns
@@ -748,7 +750,7 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         if llm_text:
             step_outputs["text"] = llm_text
         if thinkings:
-            step_outputs["thinking"] = thinkings[0][0]
+            step_outputs["thinking"] = thinkings[0][0][:_MAX_THINKING]
         step_span = make_span(
             trace_id, root_span_id,
             name=step_name,
@@ -774,7 +776,7 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
                 start_ns=t_start,
                 end_ns=t_end,
                 inputs={"model": model, "kind": "thinking"},
-                outputs={"thinking": think_text},
+                outputs={"thinking": think_text[:_MAX_THINKING]},
                 extra_attrs=({"mlflow.llm.model": json.dumps(model)}
                              if model else None),
             ))

@@ -200,6 +200,46 @@ class TestBuildTrace:
         assert any("/aeh-hello-world" in m for m in messages)
         assert any("Hello, World!" in m for m in messages)
 
+    def test_prompt_matches_chain_spans_when_stream_also_has_user_text(self, tmp_path):
+        """Root prompt must agree with the CHAIN spans, not mix stream + trajectory."""
+        events = [
+            make_system_init(),
+            make_user(text="stale prompt from a retried stream"),
+            make_assistant("msg_001", text="Created /x"),
+            make_result(cost_usd=0.10, num_turns=1),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        traj = tmp_path / "trajectory.json"
+        traj.write_text(json.dumps({
+            "schema_version": "ATIF-v1.7",
+            "steps": [
+                {
+                    "step_id": 1,
+                    "timestamp": "2026-04-14T19:59:59.000Z",
+                    "source": "user",
+                    "message": "Create a simple Hello, World! Python program.",
+                },
+            ],
+        }))
+        trace = build_trace(
+            stdout, _basic_run_result(),
+            run_id="test-run", experiment_id="exp-001",
+            trajectory_path=traj,
+        )
+        root = next(s for s in trace["data"]["spans"] if s["parent_span_id"] is None)
+        root_inputs = json.loads(root["attributes"]["mlflow.spanInputs"])
+        user_spans = [
+            s for s in trace["data"]["spans"]
+            if _get_span_type(s) == "CHAIN" and s["name"].startswith("user:")
+        ]
+        chain_message = json.loads(
+            user_spans[0]["attributes"]["mlflow.spanOutputs"])["message"]
+
+        # Root prompt and the CHAIN span must come from the same source
+        # (trajectory), not disagree with each other.
+        assert root_inputs["prompt"] == chain_message
+        assert "stale prompt" not in root_inputs["prompt"]
+
     def test_write_tool_span_includes_file_content(self, tmp_path):
         """Write TOOL span inputs keep the file body, not just file_path."""
         events = [
