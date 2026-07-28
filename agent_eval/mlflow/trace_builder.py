@@ -20,6 +20,17 @@ def iso_to_ns(ts_str):
     return int(_dt_parse(ts_str).timestamp() * 1e9)
 
 
+def _clamp_ns(ns, lo, hi):
+    """Clamp a timestamp into [lo, hi].
+
+    Trajectory.json timestamps come from a different clock/source than the
+    stream-json events that define the trace window; without clamping, a
+    clock offset can push a child span (CHAIN/thinking) before the trace
+    start or after the trace end, rendering outside its own parent span.
+    """
+    return max(lo, min(ns, hi))
+
+
 def make_span(trace_id, parent_id, name, span_type, start_ns, end_ns,
                inputs=None, outputs=None, extra_attrs=None):
     """Create a span dict for the trace."""
@@ -146,6 +157,24 @@ def _load_trajectory_tool_data(trajectory_path):
             # with Write file body) over the short stream-json success line.
             tool_results[tuid] = content.strip()[:_MAX_TOOL_OUTPUT]
     return tool_args, tool_results
+
+
+def _load_trajectory_reasoning(trajectory_path):
+    """Ordered list of non-empty ``reasoning_content`` from ATIF agent steps.
+
+    Returns ``[(text, timestamp|None), ...]`` in trajectory step order.
+    """
+    data = _load_trajectory_json(trajectory_path)
+    if not data:
+        return []
+    out = []
+    for step in data.get("steps") or []:
+        if not isinstance(step, dict) or step.get("source") != "agent":
+            continue
+        reasoning = step.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning.strip():
+            out.append((reasoning.strip(), step.get("timestamp")))
+    return out
 
 
 def build_trace(stdout_path, run_result, run_id, experiment_id,
@@ -537,6 +566,27 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
                     ))
     _flush_batch()
 
+    # Backfill thinking from ATIF reasoning_content when the stream has none
+    # at all (e.g. Harbor runs where extended thinking wasn't captured in
+    # stream-json). Only applies when the stream is fully silent on thinking,
+    # so it never second-guesses/conflicts with real per-turn stream data.
+    if not any(seg_type == "thinking" for seg_type, *_ in segments):
+        traj_reasoning = _load_trajectory_reasoning(trajectory_path)
+        if traj_reasoning:
+            reasoning_iter = iter(traj_reasoning)
+            backfilled = []
+            for seg in segments:
+                if seg[0] == "llm":
+                    reasoning = next(reasoning_iter, None)
+                    if reasoning:
+                        text, _ts = reasoning
+                        # Use the llm segment's own timestamp so the
+                        # synthetic thinking lands right before its turn,
+                        # matching natural stream ordering.
+                        backfilled.append(("thinking", text, seg[2], None))
+                backfilled.append(seg)
+            segments = backfilled
+
     # ── Derive timing from event timestamps ─────────────────────
     all_event_ts = [iso_to_ns(e["timestamp"])
                     for e in events if e.get("timestamp")]
@@ -604,7 +654,8 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
     for idx, turn in enumerate(user_turns_for_spans):
         ts = turn.get("timestamp")
         start_ns = iso_to_ns(ts) if ts else user_cursor
-        end_ns = start_ns + int(0.1e9)
+        start_ns = _clamp_ns(start_ns, trace_start, trace_end)
+        end_ns = _clamp_ns(start_ns + int(0.1e9), trace_start, trace_end)
         user_cursor = end_ns
         msg = turn["message"]
         first_line = msg.split("\n")[0].strip()[:80] or f"user-{idx + 1}"
@@ -781,7 +832,8 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         think_cursor = step_start
         for think_text, think_ts in thinkings:
             t_start = iso_to_ns(think_ts) if think_ts else think_cursor
-            t_end = t_start + int(0.5e9)
+            t_start = _clamp_ns(t_start, trace_start, trace_end)
+            t_end = _clamp_ns(t_start + int(0.5e9), trace_start, trace_end)
             think_cursor = t_end
             spans.append(make_span(
                 trace_id, step_span_id,
