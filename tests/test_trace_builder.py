@@ -507,3 +507,90 @@ class TestBuildTrace:
         assert len(thinking_spans) == 1
         outputs = json.loads(thinking_spans[0]["attributes"]["mlflow.spanOutputs"])
         assert outputs["thinking"] == "Real stream thinking."
+
+    def test_thinking_flushed_before_tool_only_turn(self, tmp_path):
+        """Pending thinking is attached to a tool-only turn (no llm text)."""
+        events = [
+            make_system_init(),
+            make_assistant("msg_001", thinking="Thinking before tool.",
+                           tools=[("Write", "tu_001",
+                                   {"file_path": "/x", "content": "a = 1\n"})]),
+            make_user(tool_results=[("tu_001", "ok")]),
+            make_result(cost_usd=0.10, num_turns=1),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        trace = build_trace(
+            stdout, _basic_run_result(),
+            run_id="test-run", experiment_id="exp-001",
+        )
+        agent_steps = [
+            s for s in trace["data"]["spans"]
+            if _get_span_type(s) == "AGENT" and s["parent_span_id"] is not None
+        ]
+        assert len(agent_steps) == 1
+        outputs = json.loads(agent_steps[0]["attributes"]["mlflow.spanOutputs"])
+        assert "Thinking before tool" in outputs.get("thinking", "")
+
+    def test_thinking_tool_only_turn_does_not_reuse_prior_llm_text(self, tmp_path):
+        """A thinking→tool turn after a texted step must not reuse that text.
+
+        Regression: _flush_step used to leave current_llm set, so a later
+        no-text tool turn inherited the previous step's assistant text.
+        """
+        events = [
+            make_system_init(),
+            make_assistant(
+                "msg_001",
+                text="Writing file A now.",
+                tools=[("Write", "tu_001",
+                        {"file_path": "/workspace/a.py", "content": "a = 1\n"})],
+            ),
+            make_user(tool_results=[("tu_001", "File A created")]),
+            make_assistant(
+                "msg_002",
+                thinking="Plan: write file B with no spoken text.",
+                tools=[("Write", "tu_002",
+                        {"file_path": "/workspace/b.py", "content": "b = 2\n"})],
+            ),
+            make_user(tool_results=[("tu_002", "File B created")]),
+            make_assistant("msg_003", text="Done."),
+            make_result(cost_usd=0.10, num_turns=3),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        trace = build_trace(stdout, _basic_run_result(),
+                            run_id="test-run", experiment_id="exp-001")
+        agent_steps = [
+            s for s in trace["data"]["spans"]
+            if _get_span_type(s) == "AGENT" and s["parent_span_id"] is not None
+        ]
+
+        def _io(step):
+            return (
+                json.loads(step["attributes"].get("mlflow.spanInputs", "{}")),
+                json.loads(step["attributes"].get("mlflow.spanOutputs", "{}")),
+            )
+
+        step_a = next(
+            s for s in agent_steps
+            if "Writing file A" in _io(s)[1].get("text", "")
+        )
+        step_b = next(
+            s for s in agent_steps
+            if "write file B" in _io(s)[1].get("thinking", "")
+        )
+        step_c = next(
+            s for s in agent_steps
+            if _io(s)[1].get("text", "") == "Done."
+        )
+
+        _, out_a = _io(step_a)
+        in_b, out_b = _io(step_b)
+        _, out_c = _io(step_c)
+
+        assert out_a.get("text") == "Writing file A now."
+        assert "write file B" not in out_a.get("thinking", "")
+        assert "Write" in (in_b.get("tools") or [])
+        assert out_b.get("text") in (None, "")
+        assert "Writing file A" not in (out_b.get("text") or "")
+        assert out_c.get("text") == "Done."
+        assert "Writing file A" not in (out_c.get("text") or "")

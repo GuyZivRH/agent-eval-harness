@@ -718,6 +718,11 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
         if current_llm is not None or current_batches or current_thinkings:
             steps.append((current_llm, current_ts, current_context,
                           current_batches, current_thinkings))
+            # Reset all step fields so a subsequent thinking→tool (no text)
+            # turn cannot reuse the previous step's llm text.
+            current_llm = None
+            current_ts = None
+            current_context = []
             current_batches = []
             current_thinkings = []
             _has_bg_agents = False
@@ -742,6 +747,13 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
             current_thinkings = pending_thinkings
             pending_thinkings = []
         elif seg_type == "batch":
+            if pending_thinkings:
+                # If we have pending thinking but no llm segment arrived before
+                # the batch (e.g. a tool-only turn), flush the previous step
+                # and attach the thinking to the new step that will own this batch.
+                _flush_step()
+                current_thinkings = pending_thinkings
+                pending_thinkings = []
             current_batches.append(seg_data)
             # Detect if this batch contains Agent calls (potential bg agents)
             if any(name == "Agent" for _, _, name, _ in seg_data):
