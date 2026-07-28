@@ -647,6 +647,12 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
     current_context = []
     current_batches = []
     current_thinkings = []
+    # Thinking precedes its own turn's "llm" text segment in stream order, so
+    # it can't be appended to current_thinkings directly: _flush_step() fires
+    # on the *next* llm segment, which would close out the *previous* step
+    # bundled with thinking that actually belongs to the incoming turn. Stash
+    # it here until the matching llm segment arrives and claims it.
+    pending_thinkings = []
     # Track whether the current step launched background agents
     _has_bg_agents = False
 
@@ -667,22 +673,30 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
 
     for seg_type, seg_data, *rest in segments:
         if seg_type == "thinking":
-            current_thinkings.append((seg_data, rest[0] if rest else None))
+            pending_thinkings.append((seg_data, rest[0] if rest else None))
         elif seg_type == "llm":
             if _has_bg_agents and _is_status_update(seg_data):
-                # Merge status update into the current dispatch step
+                # Merge status update (and any thinking ahead of it) into the
+                # current dispatch step rather than starting a new one.
+                current_thinkings.extend(pending_thinkings)
+                pending_thinkings = []
                 continue
             # Save previous step
             _flush_step()
             current_llm = seg_data
             current_ts = rest[0] if rest else None
             current_context = rest[1] if len(rest) > 1 else []
+            # Pending thinking belongs to *this* turn's step, not the one
+            # just flushed.
+            current_thinkings = pending_thinkings
+            pending_thinkings = []
         elif seg_type == "batch":
             current_batches.append(seg_data)
             # Detect if this batch contains Agent calls (potential bg agents)
             if any(name == "Agent" for _, _, name, _ in seg_data):
                 _has_bg_agents = True
-    # Flush final step
+    # Any trailing thinking with no following turn belongs to the last step.
+    current_thinkings.extend(pending_thinkings)
     _flush_step()
 
     # ── Build spans from steps ──────────────────────────────────
