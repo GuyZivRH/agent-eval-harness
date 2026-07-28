@@ -360,3 +360,55 @@ class TestBuildTrace:
             for s in agent_steps
         ]
         assert any("Write" in (i.get("tools") or []) for i in inputs_list)
+
+    def test_thinking_attributed_to_its_own_turns_step(self, tmp_path):
+        """Each step's thinking output is its OWN turn's, not the next turn's.
+
+        Regression test: thinking is emitted before its turn's text/tool_use
+        in stream order, so a step-grouping bug can misattribute it to the
+        *previous* step instead of the one it actually belongs to.
+        """
+        events = [
+            make_system_init(),
+            make_assistant(
+                "msg_001",
+                thinking="Plan: write file A first.",
+                text="Writing file A now.",
+                tools=[("Write", "tu_001",
+                        {"file_path": "/workspace/a.py", "content": "a = 1\n"})],
+            ),
+            make_user(tool_results=[("tu_001", "File A created")]),
+            make_assistant(
+                "msg_002",
+                thinking="Plan: write file B next.",
+                text="Writing file B now.",
+                tools=[("Write", "tu_002",
+                        {"file_path": "/workspace/b.py", "content": "b = 2\n"})],
+            ),
+            make_user(tool_results=[("tu_002", "File B created")]),
+            make_assistant("msg_003", text="Done."),
+            make_result(cost_usd=0.10, num_turns=3),
+        ]
+        stdout = _write_stream(tmp_path, events)
+        trace = build_trace(stdout, _basic_run_result(),
+                            run_id="test-run", experiment_id="exp-001")
+        agent_steps = [
+            s for s in trace["data"]["spans"]
+            if _get_span_type(s) == "AGENT" and s["parent_span_id"] is not None
+        ]
+
+        def _outputs(step_text_substr):
+            step = next(
+                s for s in agent_steps
+                if step_text_substr in json.loads(
+                    s["attributes"].get("mlflow.spanOutputs", "{}")
+                ).get("text", "")
+            )
+            return json.loads(step["attributes"]["mlflow.spanOutputs"])
+
+        step_a = _outputs("Writing file A")
+        step_b = _outputs("Writing file B")
+        assert "file A first" in step_a.get("thinking", "")
+        assert "file B next" not in step_a.get("thinking", "")
+        assert "file B next" in step_b.get("thinking", "")
+        assert "file A first" not in step_b.get("thinking", "")
