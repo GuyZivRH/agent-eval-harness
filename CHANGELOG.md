@@ -1,3 +1,20 @@
+# [1.23.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.22.1...v1.23.0) (2026-07-28)
+
+
+### Bug Fixes
+
+* **mlflow:** attribute thinking to its own turn's step, not the next one ([6f88fd1](https://github.com/opendatahub-io/agent-eval-harness/commit/6f88fd11def7f15742002edcda56c99ad37efd20))
+* **mlflow:** clamp trajectory timestamps and backfill reasoning_content ([59a76cf](https://github.com/opendatahub-io/agent-eval-harness/commit/59a76cf6d2f007805e0615cacc0a0998307e8b0b))
+* **mlflow:** drop unused imports and use _resolve_skill for Harbor trace names ([a9add3b](https://github.com/opendatahub-io/agent-eval-harness/commit/a9add3b1037897465d272f478f43f4e2cce9dfad))
+* **mlflow:** isolate tool-only thinking steps and tighten import skips ([08f0855](https://github.com/opendatahub-io/agent-eval-harness/commit/08f0855e23d5cebb212f11cacb3031c4da3bc110))
+* **mlflow:** resolve CodeRabbit findings on trajectory-enriched traces ([be73c30](https://github.com/opendatahub-io/agent-eval-harness/commit/be73c307dbb3985c78dcd866f4d085de84602fa8))
+
+
+### Features
+
+* **mlflow:** enrich Harbor traces with tool content and step detail ([336799a](https://github.com/opendatahub-io/agent-eval-harness/commit/336799a2bd64e798ed2c12bf9a173af56a6357e1))
+* **mlflow:** richer Harbor traces with user turns and thinking ([6141895](https://github.com/opendatahub-io/agent-eval-harness/commit/6141895c4f75cb3125acb858830f22a736e84bcb))
+
 ## [1.22.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.22.0...v1.22.1) (2026-07-27)
 
 
