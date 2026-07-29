@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://guyzivrh.github.io/agent-eval-harness/"><img src="https://img.shields.io/badge/docs%20preview-live-7c5cff" alt="docs preview"></a>
-  <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="python">
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="python">
   <img src="https://img.shields.io/badge/license-Apache--2.0-informational" alt="license">
   <img src="https://img.shields.io/badge/claude-plugin-7c5cff" alt="claude plugin">
   <img src="https://img.shields.io/badge/mlflow-traces-orange" alt="mlflow">

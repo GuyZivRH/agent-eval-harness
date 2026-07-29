@@ -123,9 +123,10 @@ python3 skills/eval-run/scripts/score.py regression \
 
 ## A GitHub Actions job
 
-This workflow runs the eval on every pull request and fails the check if any threshold
-regresses. The `score.py regression` step is the gate: it returns `1`, which fails the
-job.
+This skeleton shows how to **gate** a PR on thresholds. The `score.py regression`
+step is the real copy-pasteable gate (exit `1` fails the job). Producing the run
+itself is **not** a bare shell `/eval-run` — slash commands need Claude Code
+(headless) or another driver; see the note below.
 
 ```yaml title=".github/workflows/eval.yml"
 name: skill-eval
@@ -148,12 +149,13 @@ jobs:
       - name: Install the harness
         run: pip install -e .
 
-      # Produce a scored run. In CI this is typically Claude Code headless
-      # driving /eval-run; see the headless guide. The run writes
-      # eval/runs/<eval-name>/$RUN_ID/summary.yaml.
+      # NOT a shell builtin — drive /eval-run via Claude Code headless
+      # (or your own wrapper). See the note + headless guide.
+      # Expected output: eval/runs/<eval-name>/$RUN_ID/summary.yaml
       - name: Run the eval
         run: |
-          /eval-run --run-id "$RUN_ID" --model sonnet
+          echo "TODO: invoke /eval-run headlessly — see guides/headless.md"
+          exit 1
 
       # Gate: exits 1 on any threshold breach, failing the job.
       - name: Check for regressions
@@ -170,10 +172,11 @@ jobs:
 ```
 
 !!! note "Driving the run in CI"
-    Getting a skill to execute headlessly (auto-answering `AskUserQuestion`, gating
-    external services) is covered in [running headless](headless.md). For heavier or
-    containerized CI, run the same `eval.yaml` on [Harbor](harbor.md) with
-    `--runner harbor` — the config is unchanged; only the substrate flag differs.
+    `/eval-run` is a Claude Code slash command, not a binary on `PATH`. In CI, run
+    it through [Claude Code headless](headless.md) (or an equivalent driver that
+    prepares workspaces, executes cases, and scores). For heavier or containerized
+    CI, use the same `eval.yaml` on [Harbor](harbor.md) with `--runner harbor` —
+    the config is unchanged; only the substrate flag differs.
 
 ## Where to go next
 
