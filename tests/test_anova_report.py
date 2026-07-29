@@ -73,3 +73,35 @@ def test_mixed_effects_render_html_factor_p_values():
     assert "<td>model</td><td class=num>0.0100</td>" in rendered
     assert "<td>effort</td><td class=num>0.2000</td>" in rendered
     assert "model, effort" in rendered
+
+
+def test_render_html_escapes_user_controlled_ids():
+    """Model/case ids and run_id come from user-controlled dataset dir names and
+    eval.yaml; they must be HTML-escaped so a hostile name can't inject script
+    into the generated report (stored XSS)."""
+    report = load_report_module()
+    evil = "x<img src=y onerror=alert(1)>"
+    analysis = {
+        "timestamp": "t",
+        "design": {"factors": {"model": [evil]}, "n_cases": 1, "replications": 1},
+        "condition_summaries": [
+            {"condition_id": evil, "model": evil, "mean": 0.5, "std": 0.0, "n": 1}
+        ],
+        "anova": {"factor": "model", "p_value": 0.2, "significant": False,
+                  "f_statistic": 1.0, "method": "m"},
+        "per_case": {evil: {evil: 0.5}},
+    }
+    rendered = report.render_html(evil, analysis)
+    assert "<img src=y onerror" not in rendered
+    assert "&lt;img" in rendered
+
+
+def test_render_summary_escapes_user_controlled_ids():
+    report = load_report_module()
+    evil = "m<script>alert(1)</script>"
+    pooled = {evil: [0.5]}
+    by_task = {evil: {evil: [0.5]}}
+    run_items = [{"run": evil, "cases": 1, "best": evil, "F": "1.0", "p": "0.2", "sig": False}]
+    rendered = report.render_summary(run_items, pooled, by_task, [evil], 1, [])
+    assert "<script>alert(1)</script>" not in rendered
+    assert "&lt;script&gt;" in rendered

@@ -63,6 +63,7 @@ def page(t, b):
 def eff_bucket(v): return "n/a" if v is None else ("small" if v<0.06 else "medium" if v<0.14 else "large")
 def order_models(ms): return sorted(ms)
 def fnum(x, n=3): return f"{x:.{n}f}" if isinstance(x,(int,float)) else "—"
+def esc(x): return html.escape(str(x))  # user-controlled values (model/case/task ids, run_id)
 def cmodel(c):  # model name from a condition summary: flat, nested, or id
     if not c:
         return "?"
@@ -146,14 +147,14 @@ def render_html(rid,d):
     levels=", ".join(str(x) for fv in des.get("factors",{}).values() for x in fv)
     meta=("<dl class=meta>"+f"<dt>Factor</dt><dd>{html.escape(factor_label(an))}</dd>"
           f"<dt>Levels</dt><dd>{html.escape(levels)}</dd>"
-          f"<dt>Cases</dt><dd>{des.get('n_cases',len(cases))} — {', '.join(cases) or '—'}</dd>"
+          f"<dt>Cases</dt><dd>{des.get('n_cases',len(cases))} — {', '.join(esc(c) for c in cases) or '—'}</dd>"
           f"<dt>Replications</dt><dd>{des.get('replications','?')}</dd>"
           f"<dt>Run</dt><dd>{html.escape(d.get('timestamp','?'))}</dd></dl>")
     rows=""
     for i,c in enumerate(sorted(conds,key=lambda x:-x.get("mean",0)),1):
         m=c.get("mean",0) or 0
         rk="rank1" if i==1 else ""
-        rows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{cmodel(c)}</td>"
+        rows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{esc(cmodel(c))}</td>"
                f"<td class=num>{fnum(m)}</td><td class=num>{fnum(c.get('std'))}</td><td class=num>{c.get('n','?')}</td>"
                f"<td style='width:160px'><div class=bar><i style='width:{min(100.0,max(0.0,m*100)):.0f}%'></i></div></td></tr>")
     means=f"<table><thead><tr><th>#</th><th>Model</th><th class=num>Mean</th><th class=num>Std</th><th class=num>n</th><th></th></tr></thead><tbody>{rows}</tbody></table>"
@@ -164,7 +165,7 @@ def render_html(rid,d):
          (effect_label,effect_value),("alpha",str(an.get("alpha",0.05)))])
     if sig:
         top=max(conds,key=lambda x:x.get("mean",0))
-        call=f"<div class='callout sig'>Statistically detectable effect. Best: <b>{cmodel(top)}</b> (mean {fnum(top['mean'])}).</div>"
+        call=f"<div class='callout sig'>Statistically detectable effect. Best: <b>{esc(cmodel(top))}</b> (mean {fnum(top['mean'])}).</div>"
     elif computed:
         call=(f"<div class=callout>Not significant at n={des.get('n_cases','?')} cases, "
               f"{des.get('replications','?')} replication(s) — small n / high variance can mask real effects.</div>")
@@ -174,18 +175,18 @@ def render_html(rid,d):
     matrix=""
     if per and cases:
         ms=order_models(list(per.keys()))
-        head="<tr><th>Case</th>"+"".join(f"<th class=ctr>{m}</th>" for m in ms)+"</tr>"
+        head="<tr><th>Case</th>"+"".join(f"<th class=ctr>{esc(m)}</th>" for m in ms)+"</tr>"
         body=""
         for c in cases:
-            tds=f"<td>{c}</td>"
+            tds=f"<td>{esc(c)}</td>"
             for m in ms:
                 v=per[m].get(c)
                 tds+=("<td class=cell-pass>✓</td>" if v in (1,1.0) else
-                      "<td class=cell-fail>·</td>" if v in (0,0.0) else f"<td class=cell-fail>{'—' if v is None else v}</td>")
+                      "<td class=cell-fail>·</td>" if v in (0,0.0) else f"<td class=cell-fail>{'—' if v is None else esc(v)}</td>")
             body+=f"<tr>{tds}</tr>"
         matrix=f"<div class=card><h2>Per-case scores</h2><table><thead>{head}</thead><tbody>{body}</tbody></table></div>"
     body=(f"<p><a href='../anova-summary.html'>← model comparison</a></p>"
-          f"<h1>ANOVA — {rid}</h1><div class=sub>{badge}</div>"
+          f"<h1>ANOVA — {esc(rid)}</h1><div class=sub>{badge}</div>"
           f"<div class=card><h2>Experiment</h2>{meta}</div>"
           f"<div class=card><h2>Condition means (ranked)</h2>{means}</div>"
           f"<div class=card><h2>ANOVA</h2>{anova}</div>{matrix}"
@@ -202,14 +203,14 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
     for i,m in enumerate(lb,1):
         xs=pooled[m]; mu=mean(xs); solved=sum(1 for s in xs if isinstance(s,(int,float)) and s>=1.0)
         rk="rank1" if i==1 else ""
-        lrows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{m}</td>"
+        lrows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{esc(m)}</td>"
                 f"<td class=num>{mu:.3f}</td><td class=num>{solved}/{len(xs)}</td>"
                 f"<td class=num>{(solved/len(xs)*100 if xs else 0):.0f}%</td>"
                 f"<td style='width:200px'><div class=bar><i style='width:{min(100.0,max(0.0,mu*100)):.0f}%'></i></div></td></tr>")
     leaderboard=(f"<table><thead><tr><th>#</th><th>Model</th><th class=num>Mean score</th>"
                  f"<th class=num>Solved (=1.0)</th><th class=num>% solved</th><th></th></tr></thead><tbody>{lrows}</tbody></table>")
     # model x task heatmap (mean over runs), colour-scaled over the observed range
-    head="<tr><th>Task</th>"+"".join(f"<th class=ctr>{m}</th>" for m in models)+"<th class=ctr>best</th></tr>"
+    head="<tr><th>Task</th>"+"".join(f"<th class=ctr>{esc(m)}</th>" for m in models)+"<th class=ctr>best</th></tr>"
     all_vals=[mean(by_task[m][t]) for m in models for t in tasks if by_task[m].get(t)]
     heat_lo=min(all_vals) if all_vals else 0.0
     heat_hi=max(all_vals) if all_vals else 1.0
@@ -222,8 +223,8 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
             cls="win" if (v is not None and best is not None and v>=best>0) else ""
             disp="—" if v is None else f"{v:.2f}"
             cells+=f"<td class='heat {cls}' style='background:{heat_bg(v,heat_lo,heat_hi)}'>{disp}</td>"
-        winner=", ".join(m for m in models if vals[m] is not None and best and vals[m]>=best>0) or "—"
-        trows+=f"<tr><td>{t}</td>{cells}<td class=ctr>{winner}</td></tr>"
+        winner=", ".join(esc(m) for m in models if vals[m] is not None and best and vals[m]>=best>0) or "—"
+        trows+=f"<tr><td>{esc(t)}</td>{cells}<td class=ctr>{winner}</td></tr>"
     heatmap=f"<table><thead>{head}</thead><tbody>{trows}</tbody></table>"
     # overall winner callout
     champ=lb[0] if lb else "—"
@@ -231,19 +232,19 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
     runner=lb[1] if len(lb)>1 else None
     sig_runs=[it for it in run_items if it["sig"]]
     note=(f"Across <b>{n_runs} runs</b> ({sum(len(pooled[m]) for m in models)} scored model-cases), "
-          f"<b>{champ}</b> leads with mean {champ_mu:.3f}"
-          + (f", ahead of {runner} ({mean(pooled[runner]):.3f})." if runner else ".")
+          f"<b>{esc(champ)}</b> leads with mean {champ_mu:.3f}"
+          + (f", ahead of {esc(runner)} ({mean(pooled[runner]):.3f})." if runner else ".")
           + f" <b>{len(sig_runs)}/{n_runs}</b> individual run(s) reached statistical significance (p&lt;0.05).")
     # per-run table (secondary)
     rrows=""
     for it in run_items:
         cls=" style='background:#11251a'" if it["sig"] else ""
         sigtxt="<span class='badge sig'>yes</span>" if it["sig"] else "<span class=sub>no</span>"
-        rrows+=(f"<tr{cls}><td><a href='{it['run']}/report.html'>{it['run']}</a></td>"
-                f"<td class=num>{it['cases']}</td><td>{it['best']}</td>"
+        rrows+=(f"<tr{cls}><td><a href='{esc(it['run'])}/report.html'>{esc(it['run'])}</a></td>"
+                f"<td class=num>{it['cases']}</td><td>{esc(it['best'])}</td>"
                 f"<td class=num>{it['F']}</td><td class=num>{it['p']}</td><td>{sigtxt}</td></tr>")
-    inc=(f"<div class=sub style='margin-top:14px'>Incomplete (no analysis): {', '.join(incomplete)}</div>" if incomplete else "")
-    subtitle=(f"{' vs '.join(lb)} · {len(tasks)} task(s) · {n_runs} runs pooled"
+    inc=(f"<div class=sub style='margin-top:14px'>Incomplete (no analysis): {', '.join(esc(i) for i in incomplete)}</div>" if incomplete else "")
+    subtitle=(f"{' vs '.join(esc(x) for x in lb)} · {len(tasks)} task(s) · {n_runs} runs pooled"
               if lb else f"{len(tasks)} task(s) · {n_runs} runs pooled")
     body=(f"<h1>Model Comparison — ANOVA</h1>"
           f"<div class=sub>{subtitle}</div>"
