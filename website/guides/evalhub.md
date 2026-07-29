@@ -37,7 +37,7 @@ Compared with the other substrates:
 
 | | Local | Harbor | EvalHub |
 | --- | --- | --- | --- |
-| Trigger | `agent-eval run` / `/eval-run` | `harbor run` / `--runner harbor` | `evalhub eval run` (platform) |
+| Trigger | `/eval-run` | `/eval-run --runner harbor` or `harbor run` | `/eval-run --runner evalhub` or platform |
 | Executes agent | in-process | one container per trial | **in-process (single Job pod)** |
 | Creates sub-pods | no | yes (Harbor) | **no** |
 | Parallelism | `execution.parallelism` | Harbor trials | `execution.parallelism` |
