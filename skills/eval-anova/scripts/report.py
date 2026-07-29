@@ -200,14 +200,14 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
     lb=sorted(models,key=lambda m:-mean(pooled[m]))
     lrows=""
     for i,m in enumerate(lb,1):
-        xs=pooled[m]; mu=mean(xs); passes=sum(1 for s in xs if s in (1,1.0))
+        xs=pooled[m]; mu=mean(xs); solved=sum(1 for s in xs if isinstance(s,(int,float)) and s>=1.0)
         rk="rank1" if i==1 else ""
         lrows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{m}</td>"
-                f"<td class=num>{mu:.3f}</td><td class=num>{passes}/{len(xs)}</td>"
-                f"<td class=num>{(passes/len(xs)*100 if xs else 0):.0f}%</td>"
+                f"<td class=num>{mu:.3f}</td><td class=num>{solved}/{len(xs)}</td>"
+                f"<td class=num>{(solved/len(xs)*100 if xs else 0):.0f}%</td>"
                 f"<td style='width:200px'><div class=bar><i style='width:{min(100.0,max(0.0,mu*100)):.0f}%'></i></div></td></tr>")
     leaderboard=(f"<table><thead><tr><th>#</th><th>Model</th><th class=num>Mean score</th>"
-                 f"<th class=num>Passes</th><th class=num>Pass rate</th><th></th></tr></thead><tbody>{lrows}</tbody></table>")
+                 f"<th class=num>Solved (=1.0)</th><th class=num>% solved</th><th></th></tr></thead><tbody>{lrows}</tbody></table>")
     # model x task heatmap (mean over runs), colour-scaled over the observed range
     head="<tr><th>Task</th>"+"".join(f"<th class=ctr>{m}</th>" for m in models)+"<th class=ctr>best</th></tr>"
     all_vals=[mean(by_task[m][t]) for m in models for t in tasks if by_task[m].get(t)]
@@ -250,7 +250,7 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
           f"<div class=card><div class=callout>{note}</div></div>"
           f"<div class=card><h2>Overall leaderboard (pooled across all runs &amp; cases)</h2>{leaderboard}</div>"
           f"<div class=card><h2>Model × task — mean score (across runs)</h2>{heatmap}"
-          f"<div class=sub style='margin-top:10px'>Greener = higher mean pass rate. Best per task highlighted.</div></div>"
+          f"<div class=sub style='margin-top:10px'>Greener = higher mean score. Best per task highlighted.</div></div>"
           f"<div class=card><h2>Individual runs</h2><table><thead><tr><th>Run</th><th class=num>Cases</th>"
           f"<th>Best</th><th class=num>F</th><th class=num>p</th><th>Sig</th></tr></thead><tbody>{rrows}</tbody></table>{inc}</div>"
           f"<footer>Generated {NOW} from <code>analysis.json</code> files · no re-run.</footer>")
