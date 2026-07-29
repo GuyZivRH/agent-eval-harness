@@ -13,11 +13,6 @@ from pathlib import Path
 BASE = (sys.argv[1] if len(sys.argv) > 1
         else os.environ.get("AGENT_EVAL_RUNS_DIR", "eval/runs"))
 RUNS = sorted(d for d in glob.glob(os.path.join(BASE, "anova-*")) if os.path.isdir(d))
-MODEL_ORDER = ["claude-opus-4-6", "claude-sonnet-4-6",
-               "claude-haiku-4-5@20251001", "claude-haiku-4-5"]
-SHORT = {"claude-opus-4-6": "opus", "claude-sonnet-4-6": "sonnet",
-         "claude-haiku-4-5@20251001": "haiku", "claude-haiku-4-5": "haiku"}
-SHORT_ORDER = ["opus", "sonnet", "haiku"]
 NOW = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 CSS = """
@@ -66,7 +61,7 @@ def page(t, b):
             f"<body><div class=wrap>{b}</div></body></html>")
 
 def eff_bucket(v): return "n/a" if v is None else ("small" if v<0.06 else "medium" if v<0.14 else "large")
-def order_models(ms): return [m for m in MODEL_ORDER if m in ms] + [m for m in ms if m not in MODEL_ORDER]
+def order_models(ms): return sorted(ms)
 def fnum(x, n=3): return f"{x:.{n}f}" if isinstance(x,(int,float)) else "—"
 def cmodel(c):  # model name from a condition summary: flat, nested, or id
     if not c:
@@ -129,11 +124,11 @@ def render_md(rid,d):
     L=[f"# ANOVA Report — {rid}","",f"*Generated {NOW} from `analysis.json`.*","","## Condition means (ranked)","",
        "| Rank | Model | Mean | Std | n |","|---|---|---|---|---|"]
     for i,c in enumerate(sorted(conds,key=lambda x:-x.get("mean",0)),1):
-        L.append(f"| {i} | {SHORT.get(cmodel(c),cmodel(c))} | {fnum(c.get('mean'))} | {fnum(c.get('std'))} | {c.get('n','?')} |")
+        L.append(f"| {i} | {cmodel(c)} | {fnum(c.get('mean'))} | {fnum(c.get('std'))} | {c.get('n','?')} |")
     L+=anova_md_lines(an)
     if per and cases:
         ms=order_models(list(per.keys()))
-        L+=["","## Per-case scores","","| Case | "+" | ".join(SHORT.get(m,m) for m in ms)+" |","|---"*(len(ms)+1)+"|"]
+        L+=["","## Per-case scores","","| Case | "+" | ".join(m for m in ms)+" |","|---"*(len(ms)+1)+"|"]
         for c in cases: L.append("| "+" | ".join([c]+[str(per[m].get(c,"—")) for m in ms])+" |")
     return "\n".join(L)
 
@@ -146,7 +141,7 @@ def render_html(rid,d):
     computed=isinstance(p,(int,float))
     badge=(f"<span class='badge sig'>SIGNIFICANT &nbsp;p={fnum(p,3)}</span>" if sig
            else f"<span class='badge nsig'>not significant"+(f" &nbsp;p={fnum(p,3)}" if computed else " · no variance")+"</span>")
-    levels=", ".join(SHORT.get(x,x) for fv in des.get("factors",{}).values() for x in fv)
+    levels=", ".join(str(x) for fv in des.get("factors",{}).values() for x in fv)
     meta=("<dl class=meta>"+f"<dt>Factor</dt><dd>{html.escape(factor_label(an))}</dd>"
           f"<dt>Levels</dt><dd>{html.escape(levels)}</dd>"
           f"<dt>Cases</dt><dd>{des.get('n_cases',len(cases))} — {', '.join(cases) or '—'}</dd>"
@@ -156,7 +151,7 @@ def render_html(rid,d):
     for i,c in enumerate(sorted(conds,key=lambda x:-x.get("mean",0)),1):
         m=c.get("mean",0) or 0
         rk="rank1" if i==1 else ""
-        rows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{SHORT.get(cmodel(c),cmodel(c))}</td>"
+        rows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{cmodel(c)}</td>"
                f"<td class=num>{fnum(m)}</td><td class=num>{fnum(c.get('std'))}</td><td class=num>{c.get('n','?')}</td>"
                f"<td style='width:160px'><div class=bar><i style='width:{m*100:.0f}%'></i></div></td></tr>")
     means=f"<table><thead><tr><th>#</th><th>Model</th><th class=num>Mean</th><th class=num>Std</th><th class=num>n</th><th></th></tr></thead><tbody>{rows}</tbody></table>"
@@ -167,7 +162,7 @@ def render_html(rid,d):
          (effect_label,effect_value),("alpha",str(an.get("alpha",0.05)))])
     if sig:
         top=max(conds,key=lambda x:x.get("mean",0))
-        call=f"<div class='callout sig'>Statistically detectable effect. Best: <b>{SHORT.get(cmodel(top),cmodel(top))}</b> (mean {fnum(top['mean'])}).</div>"
+        call=f"<div class='callout sig'>Statistically detectable effect. Best: <b>{cmodel(top)}</b> (mean {fnum(top['mean'])}).</div>"
     elif computed:
         call="<div class=callout>Not significant at n=3, 1 replication — small n / high variance can mask real effects.</div>"
     else:
@@ -176,7 +171,7 @@ def render_html(rid,d):
     matrix=""
     if per and cases:
         ms=order_models(list(per.keys()))
-        head="<tr><th>Case</th>"+"".join(f"<th class=ctr>{SHORT.get(m,m)}</th>" for m in ms)+"</tr>"
+        head="<tr><th>Case</th>"+"".join(f"<th class=ctr>{m}</th>" for m in ms)+"</tr>"
         body=""
         for c in cases:
             tds=f"<td>{c}</td>"
@@ -196,7 +191,7 @@ def render_html(rid,d):
 
 # ---------- SUMMARY = pooled head-to-head model comparison ----------
 def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
-    models=[m for m in SHORT_ORDER if m in pooled] + [m for m in pooled if m not in SHORT_ORDER]
+    models=sorted(pooled.keys())
     # leaderboard
     def mean(xs): return sum(xs)/len(xs) if xs else 0.0
     lb=sorted(models,key=lambda m:-mean(pooled[m]))
@@ -232,8 +227,7 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
     note=(f"Across <b>{n_runs} runs</b> ({sum(len(pooled[m]) for m in models)} scored model-cases), "
           f"<b>{champ}</b> leads with mean {champ_mu:.3f}"
           + (f", ahead of {runner} ({mean(pooled[runner]):.3f})." if runner else ".")
-          + f" Only <b>{len(sig_runs)}/{n_runs}</b> individual run(s) reached statistical significance "
-          f"(p&lt;0.05), and scores are mostly failures — treat rankings as <b>exploratory</b>, not conclusive.")
+          + f" <b>{len(sig_runs)}/{n_runs}</b> individual run(s) reached statistical significance (p&lt;0.05).")
     # per-run table (secondary)
     rrows=""
     for it in run_items:
@@ -243,8 +237,10 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
                 f"<td class=num>{it['cases']}</td><td>{it['best']}</td>"
                 f"<td class=num>{it['F']}</td><td class=num>{it['p']}</td><td>{sigtxt}</td></tr>")
     inc=(f"<div class=sub style='margin-top:14px'>Incomplete (no analysis): {', '.join(incomplete)}</div>" if incomplete else "")
+    subtitle=(f"{' vs '.join(lb)} · {len(tasks)} task(s) · {n_runs} runs pooled"
+              if lb else f"{len(tasks)} task(s) · {n_runs} runs pooled")
     body=(f"<h1>Model Comparison — ANOVA</h1>"
-          f"<div class=sub>opus vs sonnet vs haiku · 3 coding tasks · {n_runs} runs pooled</div>"
+          f"<div class=sub>{subtitle}</div>"
           f"<div class=card><div class=callout>{note}</div></div>"
           f"<div class=card><h2>Overall leaderboard (pooled across all runs &amp; cases)</h2>{leaderboard}</div>"
           f"<div class=card><h2>Model × task — mean score (across runs)</h2>{heatmap}"
@@ -272,10 +268,10 @@ def main():
         an=d.get("anova",{});conds=d.get("condition_summaries",[]);per=d.get("per_case",{})
         best=max(conds,key=lambda x:x.get("mean",0)) if conds else None
         run_items.append({"run":rid,"cases":d.get("design",{}).get("n_cases","—"),
-            "best":f"{SHORT.get(cmodel(best),cmodel(best))} ({fnum(best['mean'],2)})" if best else "—",
+            "best":f"{cmodel(best)} ({fnum(best['mean'],2)})" if best else "—",
             "F":fnum(an.get("f_statistic"),2),"p":fnum(best_p(an),3),"sig":sig_any(an)})
         for model,cs in per.items():
-            sm=SHORT.get(model,model); pooled.setdefault(sm,[]); by_task.setdefault(sm,{})
+            sm=model; pooled.setdefault(sm,[]); by_task.setdefault(sm,{})
             for case,score in cs.items():
                 if case not in tasks: tasks.append(case)
                 pooled[sm].append(score); by_task[sm].setdefault(case,[]).append(score)
