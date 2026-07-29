@@ -13,15 +13,24 @@ Not a long-lived product fork; install and clone URLs still point upstream.
 
 </div>
 
-<p class="aeh-hero-logo" markdown>
-![Agent Eval Harness](assets/images/aeh-logo.png)
+<div class="aeh-hero" markdown>
+
+<p class="aeh-hero-logo">
+<img src="assets/images/aeh-logo.png" alt="Agent Eval Harness" width="96" height="96">
 </p>
+
+<p class="aeh-eyebrow"><span class="aeh-eyebrow-dot"></span>Evaluation for Claude Code skills &amp; agents</p>
 
 # Make agent performance measurable — and improvable
 
 Evaluate Claude Code skills and agent capabilities with one declarative
 `eval.yaml`: analyze, generate cases, run, judge, trace in MLflow, then
 optimize. Same config on your laptop, Harbor containers, or EvalHub.
+
+<p class="aeh-cta" markdown>
+[Get started :material-arrow-right:](get-started/index.md){ .md-button .md-button--primary }
+[eval.yaml reference :material-arrow-right:](reference/eval-yaml.md){ .md-button }
+</p>
 
 <p class="aeh-badges" markdown>
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -34,12 +43,11 @@ optimize. Same config on your laptop, Harbor containers, or EvalHub.
 <p class="aeh-made-at">
   <span class="aeh-made-at__label">Made at</span>
   <span class="aeh-made-at__logos">
-    <img src="assets/images/redhat-hat.png" alt="Red Hat" class="aeh-made-at__redhat">
+    <img src="assets/images/redhat-logo.svg" alt="Red Hat" class="aeh-made-at__redhat">
   </span>
 </p>
 
-[Get started :material-arrow-right:](get-started/index.md){ .md-button .md-button--primary }
-[eval.yaml reference :material-arrow-right:](reference/eval-yaml.md){ .md-button }
+</div>
 
 ![Agent Eval Harness loop: setup, analyze, dataset, run, mlflow, optimize](assets/images/aeh-loop.svg){ .aeh-hero-visual }
 
