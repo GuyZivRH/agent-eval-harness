@@ -559,6 +559,27 @@
 
 /* --- Presentation homepage (docs/presentation-site preview) --- */
 
+.aeh-brand-logo {
+  margin: 0 0 1rem;
+}
+
+.aeh-brand-logo img,
+.md-typeset p.aeh-brand-logo img {
+  display: block;
+  height: 2.25rem;
+  width: auto;
+  max-width: 12rem;
+  margin: 0;
+}
+
+/* Header logo (full Red Hat wordmark) needs more width than Material's default. */
+.md-header__button.md-logo img,
+.md-nav__button.md-logo img {
+  height: 1.6rem;
+  width: auto;
+  max-width: 7.5rem;
+}
+
 .aeh-proposal-banner {
   margin: 0 0 1.5rem;
   padding: 0.75rem 1rem;
