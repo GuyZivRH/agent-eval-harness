@@ -164,7 +164,8 @@ def render_html(rid,d):
         top=max(conds,key=lambda x:x.get("mean",0))
         call=f"<div class='callout sig'>Statistically detectable effect. Best: <b>{cmodel(top)}</b> (mean {fnum(top['mean'])}).</div>"
     elif computed:
-        call="<div class=callout>Not significant at n=3, 1 replication — small n / high variance can mask real effects.</div>"
+        call=(f"<div class=callout>Not significant at n={des.get('n_cases','?')} cases, "
+              f"{des.get('replications','?')} replication(s) — small n / high variance can mask real effects.</div>")
     else:
         call="<div class=callout>ANOVA not computable: zero variance (every condition scored identically).</div>"
     anova=f"<div class=tiles>{tiles}</div>{factor_p_table(an)}{call}<div class=sub style='margin-top:12px'>{html.escape(an.get('method','—'))}</div>"
