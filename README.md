@@ -1,9 +1,15 @@
 <p align="center">
-  <img src="website/assets/images/redhat-logo.png" alt="Red Hat" width="220"/>
+  <img src="website/assets/images/aeh-logo.png" alt="Agent Eval Harness" width="160"/>
 </p>
 
 <p align="center">
   <img src="website/assets/images/aeh-loop.svg" alt="Agent Eval Harness evaluation loop" width="900"/>
+</p>
+
+<p align="center">
+  <span style="display:inline-flex;align-items:center;gap:0.75rem;background:#000;color:#bdbdbd;padding:0.35rem 0.85rem;border-radius:999px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;font-family:system-ui,sans-serif;">
+    Made at&nbsp;<img src="website/assets/images/redhat-hat.png" alt="Red Hat" height="18"/>
+  </span>
 </p>
 
 <h1 align="center">Agent Eval Harness</h1>
