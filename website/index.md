@@ -13,8 +13,8 @@ Not a long-lived product fork; install and clone URLs still point upstream.
 
 </div>
 
-<p class="aeh-brand-logo" markdown>
-![Red Hat](assets/images/redhat-logo.png)
+<p class="aeh-hero-logo" markdown>
+![Agent Eval Harness](assets/images/aeh-logo.png)
 </p>
 
 # Make agent performance measurable — and improvable
@@ -29,6 +29,13 @@ optimize. Same config on your laptop, Harbor containers, or EvalHub.
 ![Claude plugin](https://img.shields.io/badge/claude-plugin-7c5cff)
 ![MLflow](https://img.shields.io/badge/mlflow-traces-orange)
 ![Harbor](https://img.shields.io/badge/harbor-containers-success)
+</p>
+
+<p class="aeh-made-at">
+  <span class="aeh-made-at__label">Made at</span>
+  <span class="aeh-made-at__logos">
+    <img src="assets/images/redhat-hat.png" alt="Red Hat" class="aeh-made-at__redhat">
+  </span>
 </p>
 
 [Get started :material-arrow-right:](get-started/index.md){ .md-button .md-button--primary }
