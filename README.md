@@ -1,10 +1,14 @@
 <p align="center">
+  <img src="website/assets/images/redhat-logo.png" alt="Red Hat" width="220"/>
+</p>
+
+<p align="center">
   <img src="website/assets/images/aeh-loop.svg" alt="Agent Eval Harness evaluation loop" width="900"/>
 </p>
 
 <h1 align="center">Agent Eval Harness</h1>
 
-<p align="center"><em>Make agent skills measurable — and improvable</em></p>
+<p align="center"><em>Make agent performance measurable — and improvable</em></p>
 
 <p align="center">
   <a href="https://guyzivrh.github.io/agent-eval-harness/"><img src="https://img.shields.io/badge/docs%20preview-live-7c5cff" alt="docs preview"></a>
