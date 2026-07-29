@@ -1,41 +1,45 @@
-# Agent Eval Harness
+<p align="center">
+  <img src="website/assets/images/aeh-loop.svg" alt="Agent Eval Harness evaluation loop" width="900"/>
+</p>
 
-Generic evaluation framework for agents and skills. Analyze, run, score, and improve skills automatically across different agent harnesses (Claude Code, OpenCode, Agent SDK).
+<h1 align="center">Agent Eval Harness</h1>
 
-**New**: Prompt-based evaluation (`execution.prompt`) for testing agent capabilities directly without skill wrappers. Extensible to any agent capability testing scenario. Initial implementation includes agentic documentation testing for evaluating documentation effectiveness, pattern understanding, and constraint compliance.
+<p align="center"><em>Make agent skills measurable — and improvable</em></p>
 
-## Overview
+<p align="center">
+  <a href="https://guyzivrh.github.io/agent-eval-harness/"><img src="https://img.shields.io/badge/docs%20preview-live-7c5cff" alt="docs preview"></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="python">
+  <img src="https://img.shields.io/badge/license-Apache--2.0-informational" alt="license">
+  <img src="https://img.shields.io/badge/claude-plugin-7c5cff" alt="claude plugin">
+  <img src="https://img.shields.io/badge/mlflow-traces-orange" alt="mlflow">
+  <img src="https://img.shields.io/badge/harbor-containers-success" alt="harbor">
+</p>
 
-```
-                                             ┌──────────────────┐
-        ┌──────────────setup────────────────▶│  MLflow Server   │◀────────────┐
-        │                                    │ (local / remote) │             │
-        │                                    └──┬───────────────┘          sync, log
-        │                                    datasets                      feedback
-        │                                       │                             │
-┌───────┴──────┐  ┌───────────────┐  ┌──────────▼───┐  ┌──────────────┐  ┌────┴───────────┐
-│  eval-setup  │─▶│ eval-analyze  │─▶│ eval-dataset │─▶│   eval-run   │─▶│  eval-mlflow   │
-│              │  │               │  │              │  │              │  │                │
-│ dependencies │  │ analyze skill │  │ generate     │  │ execute eval │  │ sync dataset   │
-│ MLflow conf  │  │ gen eval.yaml │  │ test cases   │  │ collect      │  │ log results    │
-│ directories  │  │ suggest judges│  │ fill gaps    │  │ score        │  │ traces         │
-└──────────────┘  └───────────────┘  └──────────────┘  └──▲──┬─▲──┬───┘  └────────────────┘
-                                                          │  │ │  │
-                                            ┌─────────────┘  │ │  └────────────┐
-                                            │         ┌──────▼─┴─────┐         │
-                                            │         │ eval-review  │         │
-                                            │         │              │         │
-                                            │         │ human review │         │
-                                            │         │ feedback     │         │
-                                            │         └──────────────┘         │
-                                            │                                  │
-                                            │        ┌───────────────┐         │
-                                            └────────│ eval-optimize │◀────────┘
-                                                     │               │
-                                                     │ fix skill     │
-                                                     │ re-run        │
-                                                     └───────────────┘
-```
+**Agent Eval Harness** evaluates Claude Code skills and agent capabilities with one
+declarative `eval.yaml`: analyze → generate cases → run → judge → trace in MLflow →
+optimize. Same config on your laptop, Harbor containers, or EvalHub.
+
+> **Docs UX preview:** the polished landing at
+> [guyzivrh.github.io/agent-eval-harness](https://guyzivrh.github.io/agent-eval-harness/)
+> is hosted on this fork to propose a clearer site experience to upstream owners.
+> Install and clone commands below still point at
+> [opendatahub-io/agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness).
+
+<p align="center">
+  <a href="https://guyzivrh.github.io/agent-eval-harness/">Docs preview</a> ·
+  <a href="https://guyzivrh.github.io/agent-eval-harness/get-started/">Get started</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#execution-model">Execution model</a>
+</p>
+
+## Why Agent Eval Harness
+
+- **One config everywhere.** `eval.yaml` drives local runs, Harbor, and EvalHub.
+- **Skill or prompt mode.** Test packaged skills, or agent capabilities directly
+  (including agentic documentation checks).
+- **Honest scoring.** LLM + code judges, pairwise A/B, thresholds, and HTML reports.
+- **MLflow-native traces.** Opt-in experiments, datasets, and hierarchical GenAI traces.
+- **Close the loop.** `/eval-optimize` proposes skill fixes from failures and re-runs.
 
 ## Execution Model
 

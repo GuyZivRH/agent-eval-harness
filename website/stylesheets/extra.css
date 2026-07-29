@@ -556,3 +556,39 @@
     height: calc(100vh - 4.2rem) !important;
   }
 }
+
+/* --- Presentation homepage (docs/presentation-site preview) --- */
+
+.aeh-proposal-banner {
+  margin: 0 0 1.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  background: var(--md-code-bg-color);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.aeh-proposal-banner p {
+  margin: 0;
+}
+
+.aeh-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0 1.25rem;
+}
+
+.aeh-badges img {
+  height: 1.35rem;
+}
+
+.md-typeset img.aeh-hero-visual {
+  display: block;
+  width: 100%;
+  max-width: 56rem;
+  margin: 1.5rem 0 0.5rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 28px hsla(220, 30%, 10%, 0.18);
+}

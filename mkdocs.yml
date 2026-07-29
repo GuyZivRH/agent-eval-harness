@@ -3,10 +3,12 @@
 site_name: Agent Eval Harness
 site_description: >-
   Evaluation framework for Claude Code skills and agent capabilities, built on MLflow.
-site_url: https://opendatahub-io.github.io/agent-eval-harness/
-repo_url: https://github.com/opendatahub-io/agent-eval-harness
-repo_name: opendatahub-io/agent-eval-harness
-edit_uri: edit/main/website/
+# Fork preview deploy (GuyZivRH). For an upstream PR, revert these three
+# fields to opendatahub-io.github.io / opendatahub-io/agent-eval-harness.
+site_url: https://guyzivrh.github.io/agent-eval-harness/
+repo_url: https://github.com/GuyZivRH/agent-eval-harness
+repo_name: GuyZivRH/agent-eval-harness
+edit_uri: edit/docs/presentation-site/website/
 docs_dir: website
 copyright: Copyright &copy; Red Hat, Inc. — Licensed under Apache-2.0
 
@@ -145,7 +147,7 @@ extra:
             so we can improve this page.
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/opendatahub-io/agent-eval-harness
+      link: https://github.com/GuyZivRH/agent-eval-harness
 
 nav:
   - "Home": index.md
