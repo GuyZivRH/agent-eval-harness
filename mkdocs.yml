@@ -14,6 +14,8 @@ copyright: Copyright &copy; Red Hat, Inc. — Licensed under Apache-2.0
 
 theme:
   name: material
+  logo: assets/images/redhat-logo.png
+  favicon: assets/images/redhat-logo.png
   # Fonts are self-hosted (see website/stylesheets/extra.css); disable the
   # Google Fonts CDN loader.
   font: false

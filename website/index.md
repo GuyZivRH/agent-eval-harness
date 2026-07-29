@@ -13,7 +13,11 @@ Not a long-lived product fork; install and clone URLs still point upstream.
 
 </div>
 
-# Make agent skills measurable — and improvable
+<p class="aeh-brand-logo" markdown>
+![Red Hat](assets/images/redhat-logo.png)
+</p>
+
+# Make agent performance measurable — and improvable
 
 Evaluate Claude Code skills and agent capabilities with one declarative
 `eval.yaml`: analyze, generate cases, run, judge, trace in MLflow, then
