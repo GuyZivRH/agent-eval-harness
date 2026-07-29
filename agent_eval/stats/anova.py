@@ -68,11 +68,18 @@ def repeated_measures_anova(
 
     f_stat = float(aov["F"].iloc[0])
     p_col = "p-unc" if "p-unc" in aov.columns else "p_unc"
-    p_val = float(aov[p_col].iloc[0])
+    p_unc = float(aov[p_col].iloc[0])
+    # Prefer the Greenhouse-Geisser sphericity-corrected p-value when pingouin
+    # reports it (rm_anova adds "p-GG-corr" for within designs); fall back to
+    # the uncorrected p otherwise.
+    p_val = p_unc
+    if "p-GG-corr" in aov.columns and not pd.isna(aov["p-GG-corr"].iloc[0]):
+        p_val = float(aov["p-GG-corr"].iloc[0])
 
     return {
         "f_statistic": f_stat,
         "p_value": p_val,
+        "p_uncorrected": p_unc,
         "significant": p_val < alpha,
         "method": "Repeated-measures ANOVA (pingouin rm_anova)",
         "alpha": alpha,
