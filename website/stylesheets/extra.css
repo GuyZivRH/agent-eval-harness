@@ -559,13 +559,13 @@
 
 /* --- Presentation homepage (docs/presentation-site preview) --- */
 
-/* Header / drawer logo: small circular AEH mark. */
+/* Header / drawer logo: square AEH mark. */
 .md-header__button.md-logo img,
 .md-nav__button.md-logo img {
   height: 1.75rem !important;
   width: 1.75rem !important;
   max-width: none;
-  border-radius: 50%;
+  border-radius: 0.25rem;
   object-fit: cover;
 }
 
@@ -606,7 +606,7 @@
   height: 5.5rem !important;
   max-width: 5.5rem !important;
   margin: 0 auto;
-  border-radius: 50%;
+  border-radius: 0.45rem;
   object-fit: cover;
   border: 1px solid var(--md-default-fg-color--lightest);
   box-shadow: 0 8px 28px hsla(220, 30%, 10%, 0.35);
