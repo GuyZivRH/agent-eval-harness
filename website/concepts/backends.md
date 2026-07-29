@@ -8,7 +8,8 @@ Harbor, and EvalHub — because the execution substrate is never a config key.
     `eval.yaml` owns the agent type (`runner.type`), dataset, judges, thresholds,
     models, and MLflow settings. It does **not** own the **execution backend**,
     the container substrate, the image, or credentials. Pick Local / Harbor /
-    EvalHub at invocation time with `--runner`.
+    EvalHub at invocation time with `--runner` — or, for EvalHub, via a
+    platform-triggered job (see [EvalHub](../guides/evalhub.md)).
 
 ## The three backends
 
