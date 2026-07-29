@@ -19,11 +19,9 @@ Not a long-lived product fork; install and clone URLs still point upstream.
 <img src="assets/images/aeh-logo.png" alt="Agent Eval Harness" width="96" height="96">
 </p>
 
-<p class="aeh-eyebrow"><span class="aeh-eyebrow-dot"></span>Evaluation for Claude Code skills &amp; agents</p>
-
 # Make agent performance measurable — and improvable
 
-Evaluate Claude Code skills and agent capabilities with one declarative
+Evaluate skills and agent capabilities with one declarative
 `eval.yaml`: analyze, generate cases, run, judge, trace in MLflow, then
 optimize. Same config on your laptop, Harbor containers, or EvalHub.
 
@@ -48,8 +46,6 @@ optimize. Same config on your laptop, Harbor containers, or EvalHub.
 </p>
 
 </div>
-
-![Agent Eval Harness loop: setup, analyze, dataset, run, mlflow, optimize](assets/images/aeh-loop.svg){ .aeh-hero-visual }
 
 ---
 
