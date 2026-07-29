@@ -67,9 +67,11 @@ def cmodel(c):  # model name from a condition summary: flat, nested, or id
     if not c:
         return "?"
     return c.get("model") or c.get("levels",{}).get("model") or c.get("condition_id","?")
-def heat_bg(v):  # green-ish scale for 0..1
+def heat_bg(v, lo=0.0, hi=1.0):  # green-ish scale over [lo,hi], clamped
     if v is None: return "#1d2026"
-    r=int(0x2c+(0x2e-0x2c)*v); g=int(0x31+(0xa0-0x31)*v); b=int(0x3b+(0x43-0x3b)*v)
+    t=(v-lo)/(hi-lo) if hi>lo else 0.5
+    t=max(0.0,min(1.0,t))
+    r=int(0x2c+(0x2e-0x2c)*t); g=int(0x31+(0xa0-0x31)*t); b=int(0x3b+(0x43-0x3b)*t)
     return f"#{r:02x}{g:02x}{b:02x}"
 def sig_any(an):
     sig=an.get("significant")
@@ -153,7 +155,7 @@ def render_html(rid,d):
         rk="rank1" if i==1 else ""
         rows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{cmodel(c)}</td>"
                f"<td class=num>{fnum(m)}</td><td class=num>{fnum(c.get('std'))}</td><td class=num>{c.get('n','?')}</td>"
-               f"<td style='width:160px'><div class=bar><i style='width:{m*100:.0f}%'></i></div></td></tr>")
+               f"<td style='width:160px'><div class=bar><i style='width:{min(100.0,max(0.0,m*100)):.0f}%'></i></div></td></tr>")
     means=f"<table><thead><tr><th>#</th><th>Model</th><th class=num>Mean</th><th class=num>Std</th><th class=num>n</th><th></th></tr></thead><tbody>{rows}</tbody></table>"
     effect_label="factors" if "p_values" in an else "η² (effect)"
     effect_value=str(len(pmap(an))) if "p_values" in an else f"{fnum(ng2)}"+(f" · {eff_bucket(ng2)}" if ng2 is not None else "")
@@ -203,11 +205,14 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
         lrows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{m}</td>"
                 f"<td class=num>{mu:.3f}</td><td class=num>{passes}/{len(xs)}</td>"
                 f"<td class=num>{(passes/len(xs)*100 if xs else 0):.0f}%</td>"
-                f"<td style='width:200px'><div class=bar><i style='width:{mu*100:.0f}%'></i></div></td></tr>")
+                f"<td style='width:200px'><div class=bar><i style='width:{min(100.0,max(0.0,mu*100)):.0f}%'></i></div></td></tr>")
     leaderboard=(f"<table><thead><tr><th>#</th><th>Model</th><th class=num>Mean score</th>"
                  f"<th class=num>Passes</th><th class=num>Pass rate</th><th></th></tr></thead><tbody>{lrows}</tbody></table>")
-    # model x task heatmap (mean over runs)
+    # model x task heatmap (mean over runs), colour-scaled over the observed range
     head="<tr><th>Task</th>"+"".join(f"<th class=ctr>{m}</th>" for m in models)+"<th class=ctr>best</th></tr>"
+    all_vals=[mean(by_task[m][t]) for m in models for t in tasks if by_task[m].get(t)]
+    heat_lo=min(all_vals) if all_vals else 0.0
+    heat_hi=max(all_vals) if all_vals else 1.0
     trows=""
     for t in tasks:
         cells=""; vals={m:(mean(by_task[m][t]) if by_task[m][t] else None) for m in models}
@@ -216,7 +221,7 @@ def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
             v=vals[m]
             cls="win" if (v is not None and best is not None and v>=best>0) else ""
             disp="—" if v is None else f"{v:.2f}"
-            cells+=f"<td class='heat {cls}' style='background:{heat_bg(v)}'>{disp}</td>"
+            cells+=f"<td class='heat {cls}' style='background:{heat_bg(v,heat_lo,heat_hi)}'>{disp}</td>"
         winner=", ".join(m for m in models if vals[m] is not None and best and vals[m]>=best>0) or "—"
         trows+=f"<tr><td>{t}</td>{cells}<td class=ctr>{winner}</td></tr>"
     heatmap=f"<table><thead>{head}</thead><tbody>{trows}</tbody></table>"
