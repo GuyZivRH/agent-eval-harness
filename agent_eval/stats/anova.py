@@ -16,6 +16,7 @@ Three analysis methods, each valid under different assumptions:
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import pandas as pd
@@ -75,6 +76,24 @@ def repeated_measures_anova(
     p_val = p_unc
     if "p-GG-corr" in aov.columns and not pd.isna(aov["p-GG-corr"].iloc[0]):
         p_val = float(aov["p-GG-corr"].iloc[0])
+
+    # A within-subject error sum of squares at (or near) zero — perfect
+    # separation or a perfectly consistent effect, both common with binary /
+    # gated composite scores — makes pingouin return a non-finite or negative F
+    # that still passes the NaN check above. Such an F is not a usable
+    # statistic (it manufactures "infinitely significant" results or hides a
+    # real effect behind a huge negative F), so report the design as degenerate.
+    if not math.isfinite(f_stat) or f_stat < 0 or not math.isfinite(p_val):
+        return {
+            "f_statistic": None,
+            "p_value": None,
+            "significant": False,
+            "method": "Repeated-measures ANOVA (pingouin rm_anova)",
+            "alpha": alpha,
+            "factor": factor,
+            "note": "Degenerate design — near-zero within-subject variance produced a non-finite F.",
+            "details": aov.to_dict(orient="records"),
+        }
 
     return {
         "f_statistic": f_stat,

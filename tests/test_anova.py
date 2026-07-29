@@ -83,6 +83,36 @@ class TestRepeatedMeasuresAnova:
         assert "repeated" in result["method"].lower()
         assert "note" in result
 
+    def test_perfect_separation_is_degenerate_not_infinitely_significant(self):
+        """Perfect separation (one condition passes every case, the other fails
+        every case) drives the within-subject residual to ~0, so pingouin
+        returns a non-finite F. That must be reported as a degenerate design,
+        not as an 'infinitely significant' result."""
+        rows = []
+        for i in range(6):
+            rows.append({"case_id": f"case_{i}", "model": "model_a", "composite": 1.0})
+            rows.append({"case_id": f"case_{i}", "model": "model_b", "composite": 0.0})
+        result = repeated_measures_anova(pd.DataFrame(rows), factor="model")
+
+        assert result["f_statistic"] is None
+        assert result["p_value"] is None
+        assert result["significant"] is False
+        assert "note" in result
+
+    def test_consistent_effect_is_degenerate_not_negative_f(self):
+        """A perfectly consistent effect (condition B always a fixed amount
+        above A) also yields a ~0 residual and a nonsensical negative F; report
+        it as degenerate rather than emitting the negative F and p=1.0."""
+        rows = []
+        for i in range(6):
+            base = i * 0.1
+            rows.append({"case_id": f"case_{i}", "model": "model_a", "composite": base})
+            rows.append({"case_id": f"case_{i}", "model": "model_b", "composite": base + 0.1})
+        result = repeated_measures_anova(pd.DataFrame(rows), factor="model")
+
+        assert result["f_statistic"] is None
+        assert result["significant"] is False
+
     def test_high_case_variance_masks_effect_for_oneway(self):
         """When case variance dominates, one-way ANOVA misses the effect
         but repeated-measures should still detect it."""
