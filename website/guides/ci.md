@@ -123,12 +123,14 @@ python3 skills/eval-run/scripts/score.py regression \
 
 ## A GitHub Actions job
 
-This skeleton shows how to **gate** a PR on thresholds. The `score.py regression`
-step is the real copy-pasteable gate (exit `1` fails the job). Producing the run
-itself is **not** a bare shell `/eval-run` — slash commands need Claude Code
-(headless) or another driver; see the note below.
+!!! warning "Illustrative skeleton — not drop-in runnable"
+    The `score.py regression` step below is the real, copy-pasteable **gate**
+    (exit `1` fails the job). The run step is **pseudocode**: `/eval-run` is a
+    Claude Code slash command, not a binary on `PATH`. Wire
+    [Claude Code headless](headless.md) or [Harbor](harbor.md) before using this
+    in a real repo.
 
-```yaml title=".github/workflows/eval.yml"
+```yaml title=".github/workflows/eval.yml (pseudocode)"
 name: skill-eval
 on: [pull_request]
 
@@ -149,13 +151,15 @@ jobs:
       - name: Install the harness
         run: pip install -e .
 
-      # NOT a shell builtin — drive /eval-run via Claude Code headless
-      # (or your own wrapper). See the note + headless guide.
-      # Expected output: eval/runs/<eval-name>/$RUN_ID/summary.yaml
+      # PSEUDOCODE — replace with a real driver (not a bare /eval-run shell call).
+      # Options: Claude Code headless (guides/headless.md) or Harbor
+      # (`/eval-run --runner harbor …`). Must produce:
+      #   eval/runs/<eval-name>/$RUN_ID/summary.yaml
       - name: Run the eval
         run: |
-          echo "TODO: invoke /eval-run headlessly — see guides/headless.md"
-          exit 1
+          your-headless-or-harbor-driver \
+            --run-id "$RUN_ID" \
+            --model sonnet
 
       # Gate: exits 1 on any threshold breach, failing the job.
       - name: Check for regressions
@@ -172,11 +176,11 @@ jobs:
 ```
 
 !!! note "Driving the run in CI"
-    `/eval-run` is a Claude Code slash command, not a binary on `PATH`. In CI, run
-    it through [Claude Code headless](headless.md) (or an equivalent driver that
-    prepares workspaces, executes cases, and scores). For heavier or containerized
-    CI, use the same `eval.yaml` on [Harbor](harbor.md) with `--runner harbor` —
-    the config is unchanged; only the substrate flag differs.
+    Replace `your-headless-or-harbor-driver` with [Claude Code headless](headless.md)
+    (or an equivalent driver that prepares workspaces, executes cases, and scores).
+    For heavier or containerized CI, use the same `eval.yaml` on [Harbor](harbor.md)
+    with `--runner harbor` — the config is unchanged; only the substrate flag
+    differs.
 
 ## Where to go next
 

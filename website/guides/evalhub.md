@@ -21,7 +21,8 @@ comes from `execution.parallelism`, in-process, within the one pod.
 
 ```mermaid
 flowchart TD
-    A[evalhub eval run] --> B[EvalHub server]
+    A["/eval-run --runner evalhub"] --> B[EvalHub server]
+    P[platform-triggered job] --> B
     B --> C[Job pod: agent-eval-hub image]
     C --> D[entrypoint.py]
     D --> E[AgentEvalAdapter.run_benchmark_job]
