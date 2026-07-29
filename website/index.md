@@ -4,14 +4,6 @@ hide:
   - toc
 ---
 
-<div class="aeh-proposal-banner" markdown>
-
-**Docs UX preview** for [opendatahub-io/agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness) —
-hosted on a personal fork to show owners a clearer landing experience.
-Not a long-lived product fork; install and clone URLs still point upstream.
-
-</div>
-
 <div class="aeh-hero" markdown>
 
 <p class="aeh-hero-logo">

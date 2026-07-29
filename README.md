@@ -3,10 +3,6 @@
 </p>
 
 <p align="center">
-  <img src="website/assets/images/aeh-loop.svg" alt="Agent Eval Harness evaluation loop" width="900"/>
-</p>
-
-<p align="center">
   <span style="display:inline-flex;align-items:center;gap:0.85rem;color:#888;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;font-family:system-ui,sans-serif;">
     Made at&nbsp;<img src="website/assets/images/redhat-logo.svg" alt="Red Hat" height="22"/>
   </span>
@@ -17,7 +13,7 @@
 <p align="center"><em>Make agent performance measurable — and improvable</em></p>
 
 <p align="center">
-  <a href="https://guyzivrh.github.io/agent-eval-harness/"><img src="https://img.shields.io/badge/docs%20preview-live-7c5cff" alt="docs preview"></a>
+  <a href="https://opendatahub-io.github.io/agent-eval-harness/"><img src="https://img.shields.io/badge/docs-live-7c5cff" alt="docs"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="python">
   <img src="https://img.shields.io/badge/license-Apache--2.0-informational" alt="license">
   <img src="https://img.shields.io/badge/claude-plugin-7c5cff" alt="claude plugin">
@@ -25,19 +21,13 @@
   <img src="https://img.shields.io/badge/harbor-containers-success" alt="harbor">
 </p>
 
-**Agent Eval Harness** evaluates Claude Code skills and agent capabilities with one
-declarative `eval.yaml`: analyze → generate cases → run → judge → trace in MLflow →
-optimize. Same config on your laptop, Harbor containers, or EvalHub.
-
-> **Docs UX preview:** the polished landing at
-> [guyzivrh.github.io/agent-eval-harness](https://guyzivrh.github.io/agent-eval-harness/)
-> is hosted on this fork to propose a clearer site experience to upstream owners.
-> Install and clone commands below still point at
-> [opendatahub-io/agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness).
+**Agent Eval Harness** evaluates skills and agent capabilities with one declarative
+`eval.yaml`: analyze → generate cases → run → judge → trace in MLflow → optimize.
+Same config on your laptop, Harbor containers, or EvalHub.
 
 <p align="center">
-  <a href="https://guyzivrh.github.io/agent-eval-harness/">Docs preview</a> ·
-  <a href="https://guyzivrh.github.io/agent-eval-harness/get-started/">Get started</a> ·
+  <a href="https://opendatahub-io.github.io/agent-eval-harness/">Docs</a> ·
+  <a href="https://opendatahub-io.github.io/agent-eval-harness/get-started/">Get started</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#execution-model">Execution model</a>
 </p>
