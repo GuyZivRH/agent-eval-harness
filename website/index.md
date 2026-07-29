@@ -1,48 +1,96 @@
-# Agent Eval Harness
+---
+title: Agent Eval Harness
+hide:
+  - navigation
+  - toc
+---
 
-A generic evaluation framework for **skills** and **agent capabilities**. Analyze a
-skill, generate a dataset, run it, score it with LLM and code judges, and improve it
-— all driven by a single declarative `eval.yaml`.
+<div class="aeh-proposal-banner" markdown>
 
-That same `eval.yaml` runs unchanged across your laptop, containers, and a platform:
-drive any agent runner (**Claude Code**, **OpenCode**, ...), execute locally or on the
-**Harbor** and **EvalHub** backends, export rewards for RL training with **NVIDIA
-NeMo RL**, and record traces, datasets, and reports in **MLflow**.
+**Docs UX preview** for [opendatahub-io/agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness) —
+hosted on a personal fork to show owners a clearer landing experience.
+Not a long-lived product fork; install and clone URLs still point upstream.
 
-Finer-grained control is built in: **tool interception** to stub or assert on the
-agent's tool calls, **user simulation** that auto-answers `AskUserQuestion` prompts,
-**permissions** to allow/deny what the agent may run, **lifecycle hooks** around
-cases and scoring, and a rich HTML **report** with scoring summaries and per-case
-diffs.
+</div>
 
-```bash
-# 1. Add the harness to your project (it ships as a Claude Code plugin)
-claude plugin install agent-eval-harness@opendatahub-skills
+# Make agent skills measurable — and improvable
 
-# 2. Point it at a skill and let it write the config
-/eval-analyze --skill my-skill
+Evaluate Claude Code skills and agent capabilities with one declarative
+`eval.yaml`: analyze, generate cases, run, judge, trace in MLflow, then
+optimize. Same config on your laptop, Harbor containers, or EvalHub.
 
-# 3. Generate test cases and run the evaluation
-/eval-dataset
-/eval-run --model opus
-```
+<p class="aeh-badges" markdown>
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-informational)
+![Claude plugin](https://img.shields.io/badge/claude-plugin-7c5cff)
+![MLflow](https://img.shields.io/badge/mlflow-traces-orange)
+![Harbor](https://img.shields.io/badge/harbor-containers-success)
+</p>
 
 [Get started :material-arrow-right:](get-started/index.md){ .md-button .md-button--primary }
-[Browse the eval.yaml reference :material-arrow-right:](reference/eval-yaml.md){ .md-button }
+[eval.yaml reference :material-arrow-right:](reference/eval-yaml.md){ .md-button }
+
+![Agent Eval Harness loop: setup, analyze, dataset, run, mlflow, optimize](assets/images/aeh-loop.svg){ .aeh-hero-visual }
 
 ---
 
-## What it does
+## How the loop works
+
+Five stages. Only analyze → dataset → run are required for a first score.
 
 <div class="grid cards" markdown>
 
--   :material-file-cog: **Two evaluation flavors**
+-   **1 · Analyze**
 
     ---
 
-    Test a predefined **skill** (`execution.skill`) for correctness, quality, and
-    cost — or test an agent **capability directly** (`execution.prompt`), such as
-    whether an agent can navigate your documentation.
+    Point `/eval-analyze` at a skill or a prompt brief. The harness writes
+    `eval.yaml` with judges, schema, and thresholds.
+
+-   **2 · Dataset**
+
+    ---
+
+    `/eval-dataset` fills cases from your schema — or bring your own
+    `cases/` tree with gold references.
+
+-   **3 · Run & judge**
+
+    ---
+
+    `/eval-run` executes on Claude Code (or another runner), scores with
+    LLM + code judges, and emits a rich HTML report.
+
+-   **4 · Trace**
+
+    ---
+
+    Optional `/eval-mlflow` syncs metrics, artifacts, and hierarchical
+    GenAI traces for every case.
+
+-   **5 · Optimize**
+
+    ---
+
+    `/eval-optimize` proposes skill fixes from failures and re-runs so
+    you keep only real gains.
+
+</div>
+
+[See the full pipeline guide :material-arrow-right:](guides/pipeline.md)
+
+---
+
+## What you get
+
+<div class="grid cards" markdown>
+
+-   :material-file-cog: **Skill or prompt mode**
+
+    ---
+
+    Test a packaged skill (`execution.skill`) or agent capability directly
+    (`execution.prompt`) — including agentic documentation checks.
 
     [:octicons-arrow-right-24: Execution model](concepts/execution-model.md)
 
@@ -50,8 +98,8 @@ claude plugin install agent-eval-harness@opendatahub-skills
 
     ---
 
-    Score every case with built-in judges, inline Python checks, LLM rubrics, or
-    external functions. Add pairwise A/B comparison and N-sample stability.
+    Built-in judges, inline Python checks, rubrics, pairwise A/B, and
+    N-sample stability — all in one config.
 
     [:octicons-arrow-right-24: Judges & scoring](concepts/judges.md)
 
@@ -59,9 +107,8 @@ claude plugin install agent-eval-harness@opendatahub-skills
 
     ---
 
-    Run **locally** as a subprocess, in **containers** via Harbor (Podman or
-    Kubernetes/OpenShift), or on the **EvalHub** platform — the backend is a CLI
-    flag, never in `eval.yaml`.
+    Local subprocess, Harbor (Podman / OpenShift), or EvalHub — backend is
+    a CLI flag, never baked into `eval.yaml`.
 
     [:octicons-arrow-right-24: Execution backends](concepts/backends.md)
 
@@ -69,8 +116,8 @@ claude plugin install agent-eval-harness@opendatahub-skills
 
     ---
 
-    Drive Claude Code out of the box, or bring your own agent through the opaque
-    CLI runner or the OpenAI Responses API runner.
+    Claude Code out of the box; bring OpenCode or a custom CLI / Responses
+    API runner when you need it.
 
     [:octicons-arrow-right-24: Runners](concepts/runners.md)
 
@@ -78,7 +125,7 @@ claude plugin install agent-eval-harness@opendatahub-skills
 
     ---
 
-    Collapse judges into a single `[0, 1]` reward for GRPO-style training via
+    Collapse judges into a `[0, 1]` reward for GRPO-style training via
     Harbor / NeMo Gym / SkyRL.
 
     [:octicons-arrow-right-24: Reward API](concepts/reward-api.md)
@@ -87,8 +134,8 @@ claude plugin install agent-eval-harness@opendatahub-skills
 
     ---
 
-    Experiments, dataset registry, hierarchical execution traces, and feedback
-    sync — all opt-in with one `mlflow:` block.
+    Experiments, datasets, hierarchical traces, and feedback sync — opt in
+    with one `mlflow:` block.
 
     [:octicons-arrow-right-24: Tracing](concepts/tracing.md)
 
@@ -96,60 +143,58 @@ claude plugin install agent-eval-harness@opendatahub-skills
 
 ---
 
-## The pipeline
+## Choose your path
 
-Eight skills form a pipeline. Only `/eval-analyze`, `/eval-dataset`, and `/eval-run`
-are required for a first run; the rest are optional.
+| Path | Use it when | Start |
+|---|---|---|
+| **Claude Code plugin** | You want slash commands in an existing project | `claude plugin install agent-eval-harness@opendatahub-skills` |
+| **Local clone** | You are hacking on the harness itself | `git clone https://github.com/opendatahub-io/agent-eval-harness` |
+| **Harbor / OpenShift** | You need containerized, reproducible trials | [Running on Harbor](guides/harbor.md) |
 
-``` mermaid
-graph LR
-    S[/eval-setup/] --> A[/eval-analyze/]
-    A --> D[/eval-dataset/]
-    D --> R[/eval-run/]
-    R --> V[/eval-review/]
-    R --> O[/eval-optimize/]
-    V --> O
-    R -.-> M[/eval-mlflow/]
-    O --> R
+```bash
+# Upstream install (proposal preview does not change this)
+claude plugin install agent-eval-harness@opendatahub-skills
+/eval-setup
+/eval-analyze --skill my-skill
+/eval-dataset
+/eval-run --model opus
 ```
-
-[See the full pipeline guide :material-arrow-right:](guides/pipeline.md)
 
 ---
 
-## Pick your path
+## Explore the docs
 
 <div class="grid cards" markdown>
 
--   :material-school: **New here?**
+-   :material-school: **Get Started**
 
     ---
 
-    Install the harness and run your first evaluation end to end.
+    Install and run your first evaluation end to end.
 
     [:octicons-arrow-right-24: Get Started](get-started/index.md)
 
--   :material-book-open-variant: **Want the how-to?**
+-   :material-book-open-variant: **Guides**
 
     ---
 
-    Task-oriented guides for every skill and every backend.
+    Task-oriented how-tos for every skill and backend.
 
     [:octicons-arrow-right-24: Guides](guides/index.md)
 
--   :material-lightbulb-on: **Want the why?**
+-   :material-lightbulb-on: **Concepts**
 
     ---
 
-    Deep dives into the execution model, judges, rewards, and tracing.
+    Execution model, judges, rewards, and tracing.
 
     [:octicons-arrow-right-24: Concepts](concepts/index.md)
 
--   :material-chef-hat: **Learn by example?**
+-   :material-chef-hat: **Cookbook**
 
     ---
 
-    Worked, runnable configs for common evaluation scenarios.
+    Worked configs for common evaluation scenarios.
 
     [:octicons-arrow-right-24: Cookbook](cookbook/index.md)
 
