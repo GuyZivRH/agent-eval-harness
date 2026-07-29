@@ -159,7 +159,6 @@ Five stages. Only analyze → dataset → run are required for a first score.
 | **Harbor / OpenShift** | You need containerized, reproducible trials | [Running on Harbor](guides/harbor.md) |
 
 ```bash
-# Upstream install (proposal preview does not change this)
 claude plugin install agent-eval-harness@opendatahub-skills
 /eval-setup
 /eval-analyze --skill my-skill
