@@ -696,6 +696,14 @@
   margin: 0;
 }
 
+.aeh-made-at__name {
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--md-default-fg-color);
+}
+
 .aeh-proposal-banner {
   margin: 0 auto 1.75rem;
   padding: 0.75rem 1rem;

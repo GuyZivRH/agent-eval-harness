@@ -1,5 +1,4 @@
 ---
-title: Agent Eval Harness
 hide:
   - navigation
   - toc
@@ -31,7 +30,7 @@ optimize. Same config on your laptop, Harbor containers, or EvalHub.
 </p>
 
 <p class="aeh-badges" markdown>
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-informational)
 ![Claude plugin](https://img.shields.io/badge/claude-plugin-7c5cff)
 ![MLflow](https://img.shields.io/badge/mlflow-traces-orange)
@@ -41,7 +40,8 @@ optimize. Same config on your laptop, Harbor containers, or EvalHub.
 <p class="aeh-made-at">
   <span class="aeh-made-at__label">Made at</span>
   <span class="aeh-made-at__logos">
-    <img src="assets/images/redhat-logo.svg" alt="Red Hat" class="aeh-made-at__redhat">
+    <img src="assets/images/redhat-logo.svg" alt="" class="aeh-made-at__redhat" aria-hidden="true">
+    <span class="aeh-made-at__name">Red Hat</span>
   </span>
 </p>
 
@@ -212,5 +212,13 @@ claude plugin install agent-eval-harness@opendatahub-skills
     Worked configs for common evaluation scenarios.
 
     [:octicons-arrow-right-24: Cookbook](cookbook/index.md)
+
+-   :material-file-document: **Reference**
+
+    ---
+
+    eval.yaml schema, CLI, config fields, and glossary.
+
+    [:octicons-arrow-right-24: Reference](reference/index.md)
 
 </div>

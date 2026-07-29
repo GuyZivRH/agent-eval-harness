@@ -193,12 +193,6 @@ judge name exactly.
 /eval-run --model opus
 ```
 
-Or with the standalone CLI:
-
-```bash
-agent-eval run --model opus
-```
-
 Common flags:
 
 | Flag | Effect |

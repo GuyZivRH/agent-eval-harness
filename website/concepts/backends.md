@@ -5,17 +5,18 @@ runs. The same config runs unchanged across three execution backends — Local,
 Harbor, and EvalHub — because the execution substrate is never a config key.
 
 !!! tip "The config is portable by design"
-    `eval.yaml` owns the agent type, dataset, judges, thresholds, models, and
-    MLflow settings. It does **not** own the runner, the container substrate, the
-    image, or credentials. Pick the backend at invocation time.
+    `eval.yaml` owns the agent type (`runner.type`), dataset, judges, thresholds,
+    models, and MLflow settings. It does **not** own the **execution backend**,
+    the container substrate, the image, or credentials. Pick Local / Harbor /
+    EvalHub at invocation time with `--runner`.
 
 ## The three backends
 
 | Backend | Where cases run | Judging | Invocation |
 | --- | --- | --- | --- |
-| **Local** | Subprocess on your machine (no containers) | In-process (`score.py`) | `/eval-run` or `agent-eval run --config eval.yaml` |
+| **Local** | Subprocess on your machine (no containers) | In-process (`score.py`) | `/eval-run` |
 | **Harbor** | Containers via Podman (local) or Kubernetes/OpenShift | In-container reward bridge (`reward.json`) | `/eval-run --runner harbor` or `harbor run` |
-| **EvalHub** | In-process inside a platform-created Job pod | In-process (`score.py`) | Platform-triggered |
+| **EvalHub** | In-process inside a platform-created Job pod | In-process (`score.py`) | `/eval-run --runner evalhub` or platform-triggered |
 
 ```mermaid
 flowchart TD
@@ -36,7 +37,7 @@ flowchart TD
     - **`runner.type`** *(in `eval.yaml`)* — the **agent runtime**: `claude-code`,
       `cli`, or `responses-api`. See [Runners](runners.md).
     - **`--runner`** *(CLI flag on `/eval-run`)* — the **execution backend**:
-      local (default) or `harbor`.
+      `local` (default), `harbor`, or `evalhub`.
 
     So `/eval-run --runner harbor` runs your configured `runner.type` agent
     *inside Harbor containers*. The two settings are orthogonal.
