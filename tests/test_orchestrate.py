@@ -61,6 +61,26 @@ class TestAnalyzeReportSchema:
         assert per["claude-opus-4-6"]["fizzbuzz"] == 1.0
         assert per["claude-haiku-4-5"]["binary-search"] == 0.5
 
+    def test_excludes_cases_missing_from_a_condition(self):
+        """A case absent from one condition (e.g. a fault-tolerant driver
+        dropped a failed cell) must be excluded from the analysis and reported,
+        not silently listwise-deleted while n_cases still claims the full set."""
+        cases = ["fizzbuzz", "binary-search", "sort"]
+        out = []
+        for m in ["claude-opus-4-6", "claude-haiku-4-5"]:
+            cond = Condition(condition_id=m, levels={"model": m})
+            for c in cases:
+                if m == "claude-haiku-4-5" and c == "sort":
+                    continue  # missing under one condition
+                out.append(RunResult(condition=cond, case_id=c, replication=0,
+                                     judge_results={"correct": True},
+                                     composite=1.0 if c != "sort" else 0.0,
+                                     metadata={}))
+        a = analyze_experiment(out, factors=["model"])
+        assert a["excluded_cases"] == ["sort"]
+        assert a["design"]["n_cases"] == 2
+        assert a["design"]["excluded_cases"] == ["sort"]
+
     def test_multi_factor_per_case_keeps_full_condition(self, monkeypatch):
         from agent_eval.stats import anova as anova_mod
 

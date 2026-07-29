@@ -54,6 +54,18 @@ def analyze_experiment(
 
     df = build_results_dataframe(run_results)
 
+    # Repeated-measures / mixed-effects ANOVA assume a fully-crossed design;
+    # pingouin/statsmodels silently drop (listwise) any case missing from a
+    # condition, which would leave the reported case count overstating what was
+    # actually analysed. Restrict to cases present under every condition and
+    # record the rest explicitly so the design/report stay honest.
+    df, common_cases, excluded_cases = _restrict_to_common_cases(df)
+    if excluded_cases:
+        logger.warning(
+            "Excluding %d case(s) not present under every condition: %s",
+            len(excluded_cases), ", ".join(excluded_cases),
+        )
+
     if len(factors) == 1:
         anova_result = repeated_measures_anova(df, factor=factors[0], alpha=alpha)
     else:
@@ -82,6 +94,8 @@ def analyze_experiment(
     # Report-ready blocks so report.py can render directly from analysis.json
     # without an external driver reshaping the output.
     design = _build_design(df, factors)
+    if excluded_cases:
+        design["excluded_cases"] = excluded_cases
     per_case = _build_per_case(df, factors)
 
     return {
@@ -90,9 +104,36 @@ def analyze_experiment(
         "pareto_frontier": frontier,
         "design": design,
         "per_case": per_case,
+        "excluded_cases": excluded_cases,
         "n_runs": len(run_results),
         "n_conditions": len(condition_summaries),
     }
+
+
+def _restrict_to_common_cases(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """Keep only cases present under *every* condition (a balanced design).
+
+    Returns ``(filtered_df, common_cases, excluded_cases)``. If the frame lacks
+    the needed columns, is empty, or has a single condition, nothing is
+    excluded. If no case is shared across all conditions the frame is returned
+    unchanged (the ANOVA guards then flag the degenerate design).
+    """
+    if not {"condition_id", "case_id"}.issubset(df.columns) or df.empty:
+        return df, [], []
+    case_sets = [set(g["case_id"]) for _, g in df.groupby("condition_id")]
+    all_cases = set().union(*case_sets)
+    common = set(all_cases)
+    for s in case_sets:
+        common &= s
+    excluded = sorted(str(c) for c in (all_cases - common))
+    if not excluded:
+        return df, sorted(str(c) for c in all_cases), []
+    if not common:
+        return df, [], excluded
+    filtered = df[df["case_id"].isin(common)].copy()
+    return filtered, sorted(str(c) for c in common), excluded
 
 
 def _build_design(df: pd.DataFrame, factors: list[str]) -> dict[str, Any]:
