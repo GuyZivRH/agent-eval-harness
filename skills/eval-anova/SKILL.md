@@ -15,7 +15,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval.yaml --dry-run 
 python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval.yaml --analyze-only  # re-analyze existing runs + re-render
 ```
 
-New to this skill? See [QUICKSTART.md](QUICKSTART.md) for from-scratch setup and run steps.
+New to this skill? See [QUICKSTART.md](QUICKSTART.md) for from-scratch setup and run steps, and [`eval/anova-example/`](../../eval/anova-example/) for a self-contained worked example (with committed sample runs you can analyze offline).
 
 ## How it works
 

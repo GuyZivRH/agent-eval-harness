@@ -654,6 +654,8 @@ Design-of-Experiments over a `matrix:` of agent configurations. eval-run runs on
 /eval-anova --config eval.yaml --analyze-only # re-analyze existing runs + re-render
 ```
 
+See [`eval/anova-example/`](eval/anova-example/) for a self-contained worked example (committed sample runs let you reproduce the analysis + report offline).
+
 ### /eval-review
 
 Interactive human review of eval results. Presents judge scores and outputs, collects qualitative feedback, analyzes patterns, and proposes SKILL.md changes.
