@@ -150,21 +150,26 @@ def _analyze_df(
         ).agg(agg_spec)
 
     n_conditions = int(df["condition_id"].nunique()) if "condition_id" in df.columns else 0
-    if not factors or n_conditions < 2:
+    # A factor with only one observed level can't contribute to the ANOVA (its
+    # dummy coding has no contrasts) — drop it so, e.g., a single-model × context
+    # matrix analyses cleanly as a one-way context comparison.
+    effective = [f for f in factors if f in anova_df.columns and anova_df[f].nunique() >= 2]
+    if not effective or n_conditions < 2:
         anova_result = {
             "method": "ANOVA (skipped)",
-            "factor": factors[0] if factors else None,
-            "factors": factors,
+            "factor": effective[0] if effective else (factors[0] if factors else None),
+            "factors": effective,
             "f_statistic": None,
             "p_value": None,
             "significant": False,
             "alpha": alpha,
-            "note": f"Need at least 2 conditions to compare; have {n_conditions}.",
+            "note": (f"No factor has >=2 levels to compare (conditions={n_conditions})."
+                     if factors else "No factors to analyse."),
         }
-    elif len(factors) == 1:
-        anova_result = repeated_measures_anova(anova_df, factor=factors[0], alpha=alpha)
+    elif len(effective) == 1:
+        anova_result = repeated_measures_anova(anova_df, factor=effective[0], alpha=alpha)
     else:
-        anova_result = mixed_effects_anova(anova_df, factors=factors, alpha=alpha)
+        anova_result = mixed_effects_anova(anova_df, factors=effective, alpha=alpha)
 
     cost_by_condition = cost_by_condition or {}
     condition_summaries = []
