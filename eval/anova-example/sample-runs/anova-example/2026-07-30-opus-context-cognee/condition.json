@@ -1,0 +1,7 @@
+{
+  "condition_id": "opus-cognee",
+  "levels": {
+    "model": "claude-opus-4-8",
+    "context": "cognee"
+  }
+}

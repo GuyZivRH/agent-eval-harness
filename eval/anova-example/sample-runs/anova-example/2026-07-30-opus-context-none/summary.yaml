@@ -1,0 +1,25 @@
+run_id: 2026-07-30-opus-context-none
+judges:
+  solution_quality:
+    mean: 4.5
+per_case:
+  task-0008:
+    solution_quality:
+      value: 5
+      rationale: sample
+      judge_type: numeric
+  task-0010:
+    solution_quality:
+      value: 4
+      rationale: sample
+      judge_type: numeric
+  task-0031:
+    solution_quality:
+      value: 4
+      rationale: sample
+      judge_type: numeric
+  task-0034:
+    solution_quality:
+      value: 5
+      rationale: sample
+      judge_type: numeric
