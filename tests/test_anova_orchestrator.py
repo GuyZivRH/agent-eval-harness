@@ -6,7 +6,6 @@ the grid loop, factor→param mapping, condition.json stamping, dry-run cost,
 """
 
 import json
-import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -24,10 +23,10 @@ from agent_eval.anova.matrix import MatrixBuilder  # noqa: E402
 def _stub(record):
     """A run_cell_fn that records its call and writes a standard summary.yaml."""
     def run_cell_fn(*, config_path, run_id, output_dir, model, effort,
-                    subagent_model, cases, extra_env):
+                    subagent_model, cases, extra_env, input_overrides=None):
         record.append({"run_id": run_id, "model": model, "effort": effort,
                        "subagent": subagent_model, "cases": list(cases),
-                       "env": extra_env})
+                       "env": extra_env, "overrides": input_overrides})
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
         per_case = {c: {"quality": {"value": 4, "judge_type": "numeric"}} for c in cases}
@@ -62,12 +61,14 @@ def test_replications_produce_distinct_run_ids(tmp_path):
     assert len(ids) == 3  # r1/r2/r3 suffixes keep them distinct
 
 
-def test_unmapped_factor_warns(tmp_path, caplog):
+def test_nonmodel_factor_passed_as_input_override(tmp_path):
     conds = MatrixBuilder.expand_full_factorial({"model": ["a"], "temperature": ["0.0", "1.0"]})
-    with caplog.at_level(logging.WARNING):
-        O.fan_out(NS(models=NS(skill=None)), "eval.yaml", conds, ["c1"],
-                  replications=1, runs_dir=tmp_path / "r" / "e", run_cell_fn=_stub([]))
-    assert any("temperature" in r.message.lower() for r in caplog.records)
+    rec = []
+    O.fan_out(NS(models=NS(skill=None)), "eval.yaml", conds, ["c1"],
+              replications=1, runs_dir=tmp_path / "r" / "e", run_cell_fn=_stub(rec))
+    # temperature is not a runner flag — it reaches the runner as an input override
+    assert {r["overrides"]["temperature"] for r in rec} == {"0.0", "1.0"}
+    assert all("model" not in r["overrides"] for r in rec)  # model uses its own flag
 
 
 def test_cell_failure_is_skipped(tmp_path):
@@ -142,3 +143,21 @@ def test_main_run_then_analyze_writes_artifact(tmp_path, monkeypatch):
     artifact.unlink()
     assert O.main(["--config", cfg, "--analyze-only", "--no-report"]) == 0
     assert artifact.exists()
+
+
+def test_execute_input_override_helpers(tmp_path):
+    """The eval-run --input-override plumbing that carries non-model factors."""
+    import yaml as _yaml
+    import execute  # eval-run script (on sys.path via conftest)
+
+    assert execute._parse_input_overrides(["a=1", "b=x=y", "bad", "=nope"]) == {
+        "a": "1", "b": "x=y"}
+
+    p = tmp_path / "input.yaml"
+    p.write_text(_yaml.safe_dump({"prompt": "hi", "context": "none"}))
+    execute._merge_input_overrides(p, {"context": "cognee", "model": "m"})
+    assert _yaml.safe_load(p.read_text()) == {
+        "prompt": "hi", "context": "cognee", "model": "m"}
+    # missing / empty are no-ops (must not raise)
+    execute._merge_input_overrides(tmp_path / "missing.yaml", {"x": "1"})
+    execute._merge_input_overrides(p, {})

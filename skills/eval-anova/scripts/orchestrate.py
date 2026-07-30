@@ -242,6 +242,7 @@ def _run_eval_for_condition(
     subagent_model: str | None = None,
     cases: list[str] | None = None,
     extra_env: dict[str, str] | None = None,
+    input_overrides: dict[str, Any] | None = None,
 ) -> Path:
     """Drive the eval-run pipeline once for a single condition (one run)."""
     scripts = _eval_run_scripts()
@@ -273,6 +274,8 @@ def _run_eval_for_condition(
         ex_argv += ["--effort", effort]
     if subagent_model:
         ex_argv += ["--subagent-model", subagent_model]
+    for key, value in (input_overrides or {}).items():
+        ex_argv += ["--input-override", f"{key}={value}"]
     _run("execute.py", ex_argv)
 
     _run("collect.py", ["--config", config_path,
@@ -318,12 +321,12 @@ def fan_out(
                 "No model for a condition: add a 'model' factor to matrix.factors "
                 "or set models.skill in eval.yaml."
             )
-        if unmapped:
-            logger.warning(
-                "Factor(s) %s are recorded as condition dimensions but are NOT "
-                "applied to the runner (only model/effort/subagent reach eval-run). "
-                "Use a dedicated driver or separate configs for these factors.",
-                ", ".join(unmapped),
+        input_overrides = {k: cond.levels[k] for k in unmapped}
+        if input_overrides:
+            logger.info(
+                "Passing non-model factor(s) %s to the runner as input overrides "
+                "(usable as {name} in a cli command or {{ input.name }} in arguments).",
+                ", ".join(sorted(input_overrides)),
             )
         for rep in range(replications):
             run_id = _cell_run_id(date, cond.levels, rep, replications)
@@ -333,6 +336,7 @@ def fan_out(
                     config_path=config_path, run_id=run_id, output_dir=output_dir,
                     model=model, effort=effort, subagent_model=subagent,
                     cases=cases, extra_env={"AGENT_EVAL_RUNS_DIR": runs_base},
+                    input_overrides=input_overrides,
                 )
             except Exception as exc:  # noqa: BLE001 — keep the matrix going
                 logger.error("Cell %s failed, skipping: %s", run_id, exc)

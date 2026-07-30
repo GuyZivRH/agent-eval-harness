@@ -200,6 +200,13 @@ def main():
                         help="Max parallel case executions (default: from eval.yaml or sequential)")
     parser.add_argument("--run-id", default=None,
                         help="Run identifier (for hook env vars and log paths)")
+    parser.add_argument("--input-override", action="append", default=None,
+                        metavar="KEY=VALUE",
+                        help="Merge KEY=VALUE into every case's input.yaml before "
+                             "execution (repeatable). Lets a caller inject run-level "
+                             "values — e.g. matrix factor levels — so they resolve as "
+                             "{KEY} in a cli runner command or {{ input.KEY }} in "
+                             "arguments. Case fields win only if not overridden.")
     args = parser.parse_args()
 
     from agent_eval.config import EvalConfig
@@ -852,6 +859,37 @@ def _verify_repo_unchanged(repo_root, initial_state):
     return True
 
 
+def _parse_input_overrides(items):
+    """Parse repeated ``KEY=VALUE`` strings into a dict (values stay strings)."""
+    out = {}
+    for item in (items or []):
+        if "=" not in item:
+            print(f"WARNING: ignoring malformed --input-override {item!r} "
+                  "(expected KEY=VALUE)", file=sys.stderr)
+            continue
+        key, value = item.split("=", 1)
+        key = key.strip()
+        if key:
+            out[key] = value
+    return out
+
+
+def _merge_input_overrides(input_path, overrides):
+    """Merge ``overrides`` into a case's input.yaml (overrides win). No-op when
+    the file is missing/symlinked/non-mapping."""
+    import yaml as _yaml
+    if not overrides or not input_path.exists() or input_path.is_symlink():
+        return
+    try:
+        data = _yaml.safe_load(input_path.read_text()) or {}
+    except _yaml.YAMLError:
+        return
+    if not isinstance(data, dict):
+        return
+    data.update(overrides)
+    input_path.write_text(_yaml.safe_dump(data, default_flow_style=False, sort_keys=False))
+
+
 def _execute_per_case(args, config, runner, runner_cls,
                       output_dir, max_budget, timeout_s,
                       model, mlflow_experiment, system_prompt="",
@@ -872,6 +910,15 @@ def _execute_per_case(args, config, runner, runner_cls,
 
     with open(case_order_path) as f:
         case_order = _yaml.safe_load(f) or []
+
+    # Merge any --input-override KEY=VALUE into each case's input.yaml before
+    # execution, so run-level values (e.g. matrix factor levels) resolve as
+    # {KEY} in a cli runner command or {{ input.KEY }} in arguments.
+    overrides = _parse_input_overrides(getattr(args, "input_override", None))
+    if overrides:
+        for entry in case_order:
+            cid = entry if isinstance(entry, str) else entry["case_id"]
+            _merge_input_overrides(workspace / "cases" / cid / "input.yaml", overrides)
 
     # Detect in-repo mode: check if first case has _metadata.yaml with mode: in-repo
     in_repo_mode = False
