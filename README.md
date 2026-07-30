@@ -37,7 +37,7 @@ Same config on your laptop, Harbor containers, or EvalHub.
 - **One config everywhere.** `eval.yaml` drives local runs, Harbor, and EvalHub.
 - **Skill or prompt mode.** Test packaged skills, or agent capabilities directly
   (including agentic documentation checks).
-- **Honest scoring.** LLM + code judges, pairwise A/B, thresholds, and HTML reports.
+- **Robust scoring.** LLM + code judges, pairwise A/B, thresholds, and HTML reports.
 - **MLflow-native traces.** Opt-in experiments, datasets, and hierarchical GenAI traces.
 - **Close the loop.** `/eval-optimize` proposes skill fixes from failures and re-runs.
 

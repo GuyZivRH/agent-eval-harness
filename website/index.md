@@ -43,7 +43,7 @@ optimize. Same config on your laptop, Harbor containers, or EvalHub.
 
 ## How the loop works
 
-Five stages. Only analyze → dataset → run are required for a first score.
+Six stages. Only analyze → dataset → run are required for a first score.
 
 <div class="grid cards" markdown>
 
@@ -68,14 +68,21 @@ Five stages. Only analyze → dataset → run are required for a first score.
     `/eval-run` executes on Claude Code (or another runner), scores with
     LLM + code judges, and emits a rich HTML report.
 
--   **4 · Trace**
+-   **4 · Review**
+
+    ---
+
+    Optional `/eval-review` captures human feedback on scored cases before
+    you change the skill or config.
+
+-   **5 · Trace**
 
     ---
 
     Optional `/eval-mlflow` syncs metrics, artifacts, and hierarchical
     GenAI traces for every case.
 
--   **5 · Optimize**
+-   **6 · Optimize**
 
     ---
 
