@@ -1,3 +1,16 @@
+# [1.26.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.25.0...v1.26.0) (2026-07-30)
+
+
+### Bug Fixes
+
+* **hooks:** register before_report in the standalone hooks CLI --phase choices ([edd37b7](https://github.com/opendatahub-io/agent-eval-harness/commit/edd37b7e264a83916790abaea83d9c17fe75fe71))
+* **report-hooks:** address CodeRabbit [#165](https://github.com/opendatahub-io/agent-eval-harness/issues/165) review ([ad956b4](https://github.com/opendatahub-io/agent-eval-harness/commit/ad956b4ec331d4e5e2fcf29eb71957138767c8aa))
+
+
+### Features
+
+* **hooks:** add before_report lifecycle phase + gate reward section for judge-only evals ([cbbe9ad](https://github.com/opendatahub-io/agent-eval-harness/commit/cbbe9ad5a7531c9c61fdce17adcd9d6c3edd301d))
+
 # [1.25.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.24.0...v1.25.0) (2026-07-30)
 
 
