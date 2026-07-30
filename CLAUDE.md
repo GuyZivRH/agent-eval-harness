@@ -89,8 +89,7 @@ agent_eval/              # Python package (config, runner, state)
     trace_run.py         # claude-trace CLI (standalone skill tracing)
   anova/                 # eval-anova: DoE matrix testing + ANOVA statistics
     matrix.py            # Factorial (DoE) experiment design + cost estimation
-    composite.py         # Composite scoring (bool gates + numeric) for the harbor driver
-    runner.py            # Legacy per-cell executor (harbor repo-editing benchmark only)
+    composite.py         # Composite scoring helpers (bool gates + numeric; aggregate)
     archive.py           # Git-backed results archival (ResultsArchiver)
     stats/
       anova.py           # Repeated-measures, mixed-effects, one-way ANOVA
