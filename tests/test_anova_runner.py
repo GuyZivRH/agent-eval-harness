@@ -1,4 +1,4 @@
-"""Tests for agent_eval.anova_runner.make_run_fn — the eval-anova run_fn bridge.
+"""Tests for agent_eval.anova.runner.make_run_fn — the eval-anova run_fn bridge.
 
 Uses a mock runner (no Claude/Vertex) and a mocked LLM judge call (no network),
 exercising the real load_judges / load_case_record / collect / flatten path.
@@ -12,9 +12,9 @@ import pytest
 import yaml
 
 from agent_eval.agent.base import RunResult
-from agent_eval.anova_runner import _score_module, _validate_case_id, make_run_fn
+from agent_eval.anova.runner import _score_module, _validate_case_id, make_run_fn
 from agent_eval.config import EvalConfig
-from agent_eval.matrix import Condition
+from agent_eval.anova.matrix import Condition
 
 # eval-anova orchestrate is a skill script
 _scripts = str(Path(__file__).parent.parent / "skills" / "eval-anova" / "scripts")

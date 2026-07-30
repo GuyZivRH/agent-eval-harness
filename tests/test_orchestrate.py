@@ -14,7 +14,7 @@ _scripts_dir = str(Path(__file__).parent.parent / "skills" / "eval-anova" / "scr
 if _scripts_dir not in sys.path:
     sys.path.insert(0, _scripts_dir)
 
-from agent_eval.matrix import Condition, MatrixBuilder
+from agent_eval.anova.matrix import Condition, MatrixBuilder
 from orchestrate import (
     RunResult,
     apply_condition,
@@ -82,7 +82,7 @@ class TestAnalyzeReportSchema:
         assert a["design"]["excluded_cases"] == ["sort"]
 
     def test_multi_factor_per_case_keeps_full_condition(self, monkeypatch):
-        from agent_eval.stats import anova as anova_mod
+        from agent_eval.anova.stats import anova as anova_mod
 
         def mixed_effects_stub(df, factors, alpha=0.05):
             return {

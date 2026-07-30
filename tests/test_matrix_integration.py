@@ -3,7 +3,7 @@
 import yaml
 import pytest
 
-from agent_eval.matrix import MatrixBuilder
+from agent_eval.anova.matrix import MatrixBuilder
 
 
 class TestEvalYamlBackwardCompat:

@@ -1,4 +1,4 @@
-"""Tests for agent_eval.archive — ResultsArchiver with preflight validation."""
+"""Tests for agent_eval.anova.archive — ResultsArchiver with preflight validation."""
 
 import os
 import tempfile
@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_eval.archive import ResultsArchiver
+from agent_eval.anova.archive import ResultsArchiver
 
 
 class TestValidateRepo:

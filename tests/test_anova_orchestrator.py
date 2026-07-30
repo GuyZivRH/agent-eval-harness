@@ -18,7 +18,7 @@ if _scripts_dir not in sys.path:
     sys.path.insert(0, _scripts_dir)
 
 import orchestrate as O  # noqa: E402
-from agent_eval.matrix import MatrixBuilder  # noqa: E402
+from agent_eval.anova.matrix import MatrixBuilder  # noqa: E402
 
 
 def _stub(record):

@@ -16,10 +16,10 @@ _scripts_dir = str(Path(__file__).parent.parent.parent / "skills" / "eval-anova"
 if _scripts_dir not in sys.path:
     sys.path.insert(0, _scripts_dir)
 
-from agent_eval.composite import aggregate_replications, composite_score
-from agent_eval.matrix import Condition, MatrixBuilder
-from agent_eval.stats.anova import repeated_measures_anova
-from agent_eval.stats.pareto import pareto_frontier
+from agent_eval.anova.composite import aggregate_replications, composite_score
+from agent_eval.anova.matrix import Condition, MatrixBuilder
+from agent_eval.anova.stats.anova import repeated_measures_anova
+from agent_eval.anova.stats.pareto import pareto_frontier
 from orchestrate import RunResult, apply_condition, run_cell
 from design import design_experiment
 from analyze import analyze_experiment, build_results_dataframe

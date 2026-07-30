@@ -30,10 +30,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from agent_eval.archive import ResultsArchiver
-from agent_eval.composite import composite_score
+from agent_eval.anova.archive import ResultsArchiver
+from agent_eval.anova.composite import composite_score
 from agent_eval.config import EvalConfig
-from agent_eval.matrix import Condition, MatrixBuilder, _safe_id_segment
+from agent_eval.anova.matrix import Condition, MatrixBuilder, _safe_id_segment
 
 logger = logging.getLogger(__name__)
 

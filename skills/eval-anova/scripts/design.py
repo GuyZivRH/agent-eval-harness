@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agent_eval.matrix import MatrixBuilder, MatrixConfig
+from agent_eval.anova.matrix import MatrixBuilder, MatrixConfig
 
 
 def design_experiment(

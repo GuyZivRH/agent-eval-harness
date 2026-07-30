@@ -1,15 +1,15 @@
-"""Tests for agent_eval.stats — repeated-measures ANOVA, mixed-effects, Pareto frontier."""
+"""Tests for agent_eval.anova.stats — repeated-measures ANOVA, mixed-effects, Pareto frontier."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from agent_eval.stats.anova import (
+from agent_eval.anova.stats.anova import (
     mixed_effects_anova,
     one_way_anova,
     repeated_measures_anova,
 )
-from agent_eval.stats.pareto import pareto_frontier
+from agent_eval.anova.stats.pareto import pareto_frontier
 
 
 class TestRepeatedMeasuresAnova:
@@ -192,7 +192,7 @@ class TestMixedEffectsAnova:
                 return FakeFit()
 
         monkeypatch.setattr(
-            "agent_eval.stats.anova.smf.mixedlm",
+            "agent_eval.anova.stats.anova.smf.mixedlm",
             lambda formula, data, groups: FakeModel(),
         )
         df = pd.DataFrame({"case_id": ["c1"], "model": ["a"], "composite": [1.0]})

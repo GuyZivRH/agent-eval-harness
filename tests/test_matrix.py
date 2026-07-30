@@ -1,4 +1,4 @@
-"""Tests for agent_eval.matrix — MatrixBuilder, factorial expansion, cost estimation."""
+"""Tests for agent_eval.anova.matrix — MatrixBuilder, factorial expansion, cost estimation."""
 
 import tempfile
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agent_eval.matrix import MatrixBuilder, MatrixConfig, Condition
+from agent_eval.anova.matrix import MatrixBuilder, MatrixConfig, Condition
 
 
 class TestFromYaml:

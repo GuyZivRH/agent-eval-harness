@@ -1,5 +1,5 @@
 """harbor-maas-v1 reproducer: run /eval-anova over a subset of real
-models-as-a-service PR tasks via the agent_eval.anova_runner bridge.
+models-as-a-service PR tasks via the agent_eval.anova.runner bridge.
 
 Harbor builds the repo into a container, so no local clone is needed.
 
@@ -22,9 +22,9 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "skills" / "eval-anova" / "scripts"))
 
-from agent_eval.anova_runner import make_run_fn  # noqa: E402
+from agent_eval.anova.runner import make_run_fn  # noqa: E402
 from agent_eval.config import EvalConfig  # noqa: E402
-from agent_eval.matrix import Condition, MatrixBuilder  # noqa: E402
+from agent_eval.anova.matrix import Condition, MatrixBuilder  # noqa: E402
 from orchestrate import run_cell  # noqa: E402
 from analyze import analyze_experiment  # noqa: E402
 

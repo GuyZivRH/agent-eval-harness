@@ -24,10 +24,10 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from agent_eval.archive import ResultsArchiver
-from agent_eval.composite import aggregate_replications
+from agent_eval.anova.archive import ResultsArchiver
+from agent_eval.anova.composite import aggregate_replications
 from agent_eval.harbor.reward import compose_reward
-from agent_eval.stats import ANOVA_AVAILABLE
+from agent_eval.anova.stats import ANOVA_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +121,8 @@ def _analyze_df(
             "Install with: pip install agent-eval-harness[anova]"
         )
 
-    from agent_eval.stats.anova import mixed_effects_anova, repeated_measures_anova
-    from agent_eval.stats.pareto import pareto_frontier
+    from agent_eval.anova.stats.anova import mixed_effects_anova, repeated_measures_anova
+    from agent_eval.anova.stats.pareto import pareto_frontier
 
     # Repeated-measures / mixed-effects ANOVA assume a fully-crossed design;
     # pingouin/statsmodels silently drop (listwise) any case missing from a

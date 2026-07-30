@@ -40,7 +40,8 @@ from agent_eval.config import resolve_arguments
 # Resolve symlinks: agent_eval may be imported through a symlinked skills dir
 # (conftest puts those on sys.path), so __file__ can point inside skills/.
 # .resolve() follows the link to the real repo root.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+# This file is agent_eval/anova/runner.py, so the repo root is three levels up.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _MODULE_CACHE: dict[str, Any] = {}
 _MAX_CASE_ARTIFACT_FILES = 500

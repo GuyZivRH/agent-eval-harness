@@ -1,8 +1,8 @@
-"""Tests for agent_eval.composite — composite scoring with bool/int separation."""
+"""Tests for agent_eval.anova.composite — composite scoring with bool/int separation."""
 
 import pytest
 
-from agent_eval.composite import composite_score, aggregate_replications
+from agent_eval.anova.composite import composite_score, aggregate_replications
 
 
 class TestBoolIntSeparation:

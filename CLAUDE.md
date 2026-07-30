@@ -87,13 +87,14 @@ agent_eval/              # Python package (config, runner, state)
     trace_builder.py     # Hierarchical trace builder (stream-json → MLflow trace)
   cli/
     trace_run.py         # claude-trace CLI (standalone skill tracing)
-  matrix.py              # Factorial (DoE) experiment design + cost estimation
-  composite.py           # Composite scoring (bool gates + numeric) for the harbor driver
-  anova_runner.py        # Legacy per-cell executor (harbor repo-editing benchmark only)
-  archive.py             # Git-backed results archival (ResultsArchiver)
-  stats/
-    anova.py             # Repeated-measures, mixed-effects, one-way ANOVA
-    pareto.py            # Cost/quality Pareto frontier
+  anova/                 # eval-anova: DoE matrix testing + ANOVA statistics
+    matrix.py            # Factorial (DoE) experiment design + cost estimation
+    composite.py         # Composite scoring (bool gates + numeric) for the harbor driver
+    runner.py            # Legacy per-cell executor (harbor repo-editing benchmark only)
+    archive.py           # Git-backed results archival (ResultsArchiver)
+    stats/
+      anova.py           # Repeated-measures, mixed-effects, one-way ANOVA
+      pareto.py          # Cost/quality Pareto frontier
 
 skills/eval-setup/       # Skill: environment setup
   SKILL.md               # Dependencies, MLflow, API keys, directories
