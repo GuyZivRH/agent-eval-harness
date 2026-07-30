@@ -492,7 +492,101 @@ def render_comparison_table(models, rows):
     return html
 
 
-def generate_report(runs, title, overview, output_dir):
+def load_stats_artifact(input_dir):
+    """Load an eval-anova ``anova.json`` stats artifact if present.
+
+    eval-compare stays standalone and dependency-free: this reads pre-computed
+    statistics (never imports scipy/statsmodels/pingouin, never computes). Looks
+    at the input dir root first, then falls back to a single unambiguous match
+    anywhere below it. Returns the parsed dict, or None when absent.
+    """
+    input_dir = Path(input_dir)
+    root = input_dir / "anova.json"
+    if root.is_file():
+        return load_json(root)
+    matches = list(input_dir.rglob("anova.json"))
+    if len(matches) == 1:
+        return load_json(matches[0])
+    return None
+
+
+def _statnum(x, n=4):
+    return f"{x:.{n}f}" if isinstance(x, (int, float)) else "--"
+
+
+def _stats_pmap(an):
+    """Map factor -> p-value for single- or multi-factor ANOVA results."""
+    vals = an.get("p_values")
+    if isinstance(vals, dict) and vals:
+        return vals
+    return {an.get("factor") or "effect": an.get("p_value")}
+
+
+def _stats_sig_for(an, factor):
+    sig = an.get("significant")
+    return bool(sig.get(factor)) if isinstance(sig, dict) else bool(sig)
+
+
+def render_stats_section(stats):
+    """Render the ANOVA / Pareto statistics section from a pre-computed
+    ``anova.json`` (produced by /eval-anova). Pure rendering — no stats libs."""
+    an = stats.get("anova") or {}
+    design = stats.get("design") or {}
+    pareto = stats.get("pareto_frontier") or []
+    muted = "color:var(--text-muted);font-size:12px;"
+
+    sig = an.get("significant")
+    is_sig = any(bool(v) for v in sig.values()) if isinstance(sig, dict) else bool(sig)
+    verdict = "SIGNIFICANT" if is_sig else "not significant"
+
+    html = '<section id="statistics">\n<h2>Statistical Significance (ANOVA)</h2>\n'
+    html += (f'<p>{escape(str(an.get("method", "ANOVA")))} — '
+             f'<strong>{verdict}</strong> at &alpha;={escape(str(an.get("alpha", 0.05)))}.</p>\n')
+    if an.get("note"):
+        html += f'<p style="{muted}">{escape(str(an["note"]))}</p>\n'
+
+    pmap = _stats_pmap(an)
+    if any(v is not None for v in pmap.values()):
+        html += ('<table><thead><tr><th>Factor</th><th>p-value</th>'
+                 '<th>Result</th></tr></thead><tbody>\n')
+        for factor, p in pmap.items():
+            res = "significant" if _stats_sig_for(an, factor) else "not significant"
+            html += (f'<tr><td>{escape(str(factor))}</td>'
+                     f'<td>{_statnum(p)}</td><td>{res}</td></tr>\n')
+        html += '</tbody></table>\n'
+        f_stat = an.get("f_statistic")
+        bits = []
+        if isinstance(f_stat, (int, float)):
+            bits.append(f"F = {_statnum(f_stat, 3)}")
+        bits.append(f"n_cases = {escape(str(design.get('n_cases', '?')))}")
+        bits.append(f"replications = {escape(str(design.get('replications', '?')))}")
+        html += f'<p style="{muted}">{" · ".join(bits)}</p>\n'
+
+    excluded = design.get("excluded_cases") or stats.get("excluded_cases")
+    if excluded:
+        html += (f'<p style="{muted}">Excluded (missing from some condition): '
+                 f'{escape(", ".join(map(str, excluded)))}</p>\n')
+
+    if pareto and any(isinstance(c, dict) and "cost" in c for c in pareto):
+        html += ('<h3>Cost / quality Pareto frontier</h3>\n'
+                 '<table><thead><tr><th>Condition</th><th>Mean score</th>'
+                 '<th>Cost (USD)</th></tr></thead><tbody>\n')
+        for c in sorted(pareto, key=lambda x: -(x.get("mean") or 0)):
+            levels = c.get("levels") or {}
+            label = (c.get("model")
+                     or ", ".join(f"{k}={v}" for k, v in levels.items())
+                     or c.get("condition_id", "?"))
+            html += (f'<tr><td>{escape(str(label))}</td>'
+                     f'<td>{_statnum(c.get("mean"), 3)}</td>'
+                     f'<td>{_statnum(c.get("cost"), 4)}</td></tr>\n')
+        html += '</tbody></table>\n'
+
+    html += (f'<p style="{muted}">Statistics computed by <code>/eval-anova</code> '
+             '(anova.json).</p>\n</section>\n\n')
+    return html
+
+
+def generate_report(runs, title, overview, output_dir, stats=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -701,6 +795,12 @@ def generate_report(runs, title, overview, output_dir):
                 html += "</tr>"
             html += "</tbody></table>\n</section>\n\n"
 
+    # Statistics section (ANOVA / Pareto) — only when an eval-anova anova.json
+    # artifact is present. eval-compare stays standalone and scipy-free: it
+    # renders pre-computed numbers, it never computes them.
+    if stats:
+        html += render_stats_section(stats)
+
     # LLM analysis placeholder sections — populated by the agent in Step 3
     html += '<div class="analysis-section" id="model-strengths">\n'
     html += '<h2>Where Each Model Shined</h2>\n'
@@ -810,7 +910,8 @@ def cmd_discover(args):
             "has_html": r["html_report"] is not None,
         }
         out.append(entry)
-    print(json.dumps({"runs": out}, indent=2))
+    result = {"runs": out, "has_stats": load_stats_artifact(args.input_dir) is not None}
+    print(json.dumps(result, indent=2))
 
 
 def cmd_generate(args):
@@ -823,10 +924,13 @@ def cmd_generate(args):
         print("ERROR: No valid runs found", file=sys.stderr)
         sys.exit(1)
     output_dir = args.output or str(Path(args.input_dir) / "comparison-report")
-    path = generate_report(runs, args.title, args.overview, output_dir)
+    stats = load_stats_artifact(args.input_dir)
+    path = generate_report(runs, args.title, args.overview, output_dir, stats=stats)
     groups = group_by_model(runs)
     print(f"Report generated: {path}")
     print(f"Runs: {len(runs)} across {len(groups)} models")
+    if stats:
+        print("Included eval-anova statistics (anova.json)")
     all_judges = get_all_judge_names(runs)
     first_judge = all_judges[0] if all_judges else None
     for m, model_runs in groups.items():
