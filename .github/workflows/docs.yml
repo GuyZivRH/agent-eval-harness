@@ -22,6 +22,9 @@ concurrency:
 
 jobs:
   build:
+    # Only build/publish docs from the canonical repo — never on forks (a fork's
+    # push to main would otherwise try to publish to the fork's GitHub Pages).
+    if: github.repository == 'opendatahub-io/agent-eval-harness'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +48,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.repository == 'opendatahub-io/agent-eval-harness'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
