@@ -18,6 +18,7 @@ same runs directory, so you can stop, edit, and resume anywhere.
 | ⟳ | [`/eval-mlflow`](eval-mlflow.md) | Sync dataset, log run results, push/pull trace feedback | Optional — any time **after** a run |
 | ✓ | [`/eval-check`](eval-check.md) | Whole-harness health check (overlap between skills, hooks, CLAUDE.md) | Optional |
 | ⇄ | [`/eval-compare`](eval-compare.md) | Compare results across models/runs into one HTML report | Optional — after ≥2 runs |
+| σ | [`/eval-anova`](eval-anova.md) | DoE sweep over a config matrix + ANOVA/Pareto on the runs | Optional — after ≥2 conditions |
 
 !!! note "`/eval-setup` is genuinely optional"
     Dependencies live in an isolated venv that the plugin's SessionStart hook creates
@@ -64,6 +65,8 @@ prerequisite is missing:
   `eval.yaml`, `/eval-run` logs the run automatically as its final step.
 - **`/eval-optimize` drives `/eval-run`.** The optimization loop composes with `/eval-run`
   via the `Skill` tool on each iteration.
+- **`/eval-anova` fans out `/eval-run`.** It runs `/eval-run` once per matrix cell, then
+  hands the runs to `/eval-compare` to render the comparison (with the ANOVA/Pareto section).
 - **`/eval-run` prompts for `/eval-dataset`.** If `dataset.path` has no cases, it stops and
   suggests generating them.
 

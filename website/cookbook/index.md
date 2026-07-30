@@ -43,6 +43,12 @@ testing.
 
     When you need to collapse judges into a single `[0, 1]` scalar for GRPO-style training.
 
+-   :material-sigma: **[Comparing runs with ANOVA](anova.md)**
+
+    ---
+
+    When you're sweeping models or configs and want to know which score differences are statistically real.
+
 -   :material-file-edit: **[Write your own analysis recipe](custom-analysis-recipe.md)**
 
     ---
@@ -75,6 +81,8 @@ flowchart TD
     L -->|Yes| M[reward-rl]
     A --> N{Scoring gaps?}
     N -->|Yes| O[custom-judges]
+    A --> P{Comparing configs<br/>for significance?}
+    P -->|Yes| Q[anova]
 ```
 
 !!! note "Start from the walkthrough"

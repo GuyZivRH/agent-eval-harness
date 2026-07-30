@@ -60,6 +60,12 @@ directory, resolved model, cost, judge scores, and whether an HTML report is
 present. Runs are grouped by model (from `run_result.json`, falling back to the
 `run_id`), so several runs of one model aggregate together.
 
+The manifest also reports `"has_stats": true` when an `anova.json` (written by
+[`/eval-anova`](eval-anova.md)) is found — at the input-dir root, or as a single
+unambiguous match beneath it. When present, the generated report gains a
+**Statistical Significance** section automatically; no extra flag or step is
+needed, and `/eval-compare` works exactly the same with or without it.
+
 ### Step 2 — Generate the report
 
 ```bash
@@ -111,6 +117,13 @@ open <output-dir>/index.html
 - **One tab per model** — embeds that run's original `report.html`; models with
   several runs get a sub-bar to switch between individual runs. A run missing its
   `report.html` shows a "No HTML report available" message instead of an iframe.
+- **Statistical Significance (ANOVA)** — shown **only when an `anova.json` is
+  present**. It renders the ANOVA verdict (**SIGNIFICANT** / **not significant**
+  at your α), a per-factor **p-value** table with the overall **F** statistic,
+  the design (`n_cases`, `replications`, any excluded conditions), and — when the
+  artifact includes one — a **cost/quality Pareto frontier**. With no
+  `anova.json`, this section is simply absent and the rest of the report is
+  unchanged.
 - **Light/dark theme** — a header toggle mirrors the per-run reports and
   remembers your choice.
 
@@ -118,6 +131,13 @@ open <output-dir>/index.html
     When multiple runs share a model, the cards and tables show averages with
     `(min–max)` ranges, and each run still gets its own embedded report tab — so
     you can see both the aggregate and the individual runs.
+
+!!! info "Statistics are read, never computed"
+    `/eval-compare` stays standalone and dependency-free — it does **not** import
+    `scipy`, `statsmodels`, or `pingouin`, and it never runs an ANOVA itself. It
+    only *renders* the pre-computed numbers in `anova.json`. Produce that file
+    first with [`/eval-anova`](eval-anova.md), pointing both skills at the same
+    directory of runs.
 
 ## Where to go next
 
@@ -146,5 +166,14 @@ open <output-dir>/index.html
     How the skills fit together end to end.
 
     [:octicons-arrow-right-24: The pipeline](pipeline.md)
+
+-   :material-chart-bell-curve: **Add statistical significance**
+
+    ---
+
+    Run an ANOVA over the same runs to see which differences are real, then
+    re-run `/eval-compare` to fold the results in.
+
+    [:octicons-arrow-right-24: /eval-anova](eval-anova.md)
 
 </div>

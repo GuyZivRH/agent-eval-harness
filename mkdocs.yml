@@ -169,6 +169,7 @@ nav:
     - "Build a dataset (/eval-dataset)": guides/eval-dataset.md
     - "Run an eval (/eval-run)": guides/eval-run.md
     - "Compare models/runs (/eval-compare)": guides/eval-compare.md
+    - "Analyze variance (/eval-anova)": guides/eval-anova.md
     - "Review results (/eval-review)": guides/eval-review.md
     - "Optimize a skill (/eval-optimize)": guides/eval-optimize.md
     - "Log to MLflow (/eval-mlflow)": guides/eval-mlflow.md
@@ -186,6 +187,7 @@ nav:
     - "Datasets & case provenance": concepts/datasets.md
     - "Judges & scoring": concepts/judges.md
     - "Pairwise & judge sampling": concepts/pairwise-and-sampling.md
+    - "Analysis of variance (ANOVA)": concepts/anova.md
     - "Regression thresholds": concepts/thresholds.md
     - "The Reward API": concepts/reward-api.md
     - "Tool interception": concepts/tool-interception.md
@@ -225,5 +227,6 @@ nav:
     - "Agentic documentation testing": cookbook/agentic-docs.md
     - "Cross-runner: OpenCode via CLI runner": cookbook/cross-runner-opencode.md
     - "Reward shaping for RL training": cookbook/reward-rl.md
+    - "Comparing runs with ANOVA": cookbook/anova.md
     - "Writing your own analysis recipe": cookbook/custom-analysis-recipe.md
     - "Writing custom judges": cookbook/custom-judges.md

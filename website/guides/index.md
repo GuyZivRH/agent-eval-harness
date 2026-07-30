@@ -70,6 +70,14 @@ The `/eval-*` slash commands drive the workflow in order. Each maps to a skill u
 
     [:octicons-arrow-right-24: Compare models/runs](eval-compare.md)
 
+-   :material-chart-box: **/eval-anova**
+
+    ---
+
+    Sweep a matrix of models/configs and test whether score differences are statistically real.
+
+    [:octicons-arrow-right-24: Analyze variance](eval-anova.md)
+
 -   :material-account-check: **/eval-review**
 
     ---
