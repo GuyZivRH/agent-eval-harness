@@ -1,3 +1,10 @@
+## [1.30.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.30.0...v1.30.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **website:** remove the sticky sidebar-header drop shadow ([dffc0c5](https://github.com/opendatahub-io/agent-eval-harness/commit/dffc0c57533506bbe1a6776542f2e3a17fbe6ff7))
+
 # [1.30.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.29.0...v1.30.0) (2026-07-30)
 
 
