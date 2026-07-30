@@ -58,6 +58,18 @@ class MatrixBuilder:
         if not factors:
             return None
 
+        # Each factor's levels must be a non-empty list. A scalar (e.g.
+        # `model: claude-opus-4-8`) would otherwise be iterated character-by-
+        # character by itertools.product in expand_full_factorial, silently
+        # producing a garbage design; an empty list yields zero conditions.
+        for name, levels in factors.items():
+            if not isinstance(levels, list) or not levels:
+                raise ValueError(
+                    f"matrix.factors['{name}'] must be a non-empty list of levels "
+                    f"(got {type(levels).__name__}); write it as a YAML list, "
+                    f"e.g. '{name}: [a, b]'."
+                )
+
         replications = _parse_replications(matrix.get("replications", 1))
         return MatrixConfig(factors=dict(factors), replications=replications)
 

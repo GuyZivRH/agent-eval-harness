@@ -82,6 +82,20 @@ class TestFromYaml:
         with pytest.raises(ValueError, match="integer >= 1"):
             MatrixBuilder.from_yaml(p)
 
+    def test_scalar_factor_level_rejected(self, tmp_path):
+        # `model: claude-opus-4-8` (a scalar) must error, not be iterated
+        # character-by-character into a garbage design.
+        p = tmp_path / "eval.yaml"
+        p.write_text(yaml.dump({"matrix": {"factors": {"model": "claude-opus-4-8"}}}))
+        with pytest.raises(ValueError, match="non-empty list"):
+            MatrixBuilder.from_yaml(p, strict=True)
+
+    def test_empty_factor_level_list_rejected(self, tmp_path):
+        p = tmp_path / "eval.yaml"
+        p.write_text(yaml.dump({"matrix": {"factors": {"model": []}}}))
+        with pytest.raises(ValueError, match="non-empty list"):
+            MatrixBuilder.from_yaml(p, strict=True)
+
 
 class TestExpandFullFactorial:
     """Full factorial expansion of factor levels."""

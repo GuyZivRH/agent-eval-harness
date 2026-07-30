@@ -92,12 +92,23 @@ class ResultsArchiver:
     ) -> Path:
         safe_experiment_id = _safe_child_name(experiment_id)
         if self.repo_path and self.validate_repo(self.repo_path):
-            exp_dir = self.repo_path / safe_experiment_id
-            exp_dir.mkdir(parents=True, exist_ok=True)
-            result_file = exp_dir / "results.json"
-            result_file.write_text(json.dumps(data, indent=2, default=str))
-            logger.info("Archived to %s", result_file)
-            return result_file
+            try:
+                exp_dir = self.repo_path / safe_experiment_id
+                exp_dir.mkdir(parents=True, exist_ok=True)
+                result_file = exp_dir / "results.json"
+                result_file.write_text(json.dumps(data, indent=2, default=str))
+                logger.info("Archived to %s", result_file)
+                return result_file
+            except OSError as exc:
+                # A repo can validate (.git present) yet still fail to write —
+                # read-only mount, EACCES, disk full. Don't lose the run: fall
+                # through to the fallback below (unless the caller disabled it).
+                if not fallback:
+                    raise
+                logger.warning(
+                    "Archival to repo %s failed (%s); using fallback.",
+                    self.repo_path, exc,
+                )
 
         if not fallback:
             raise ValueError(

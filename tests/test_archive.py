@@ -121,6 +121,32 @@ class TestArchiveExperiment:
         with pytest.raises(ValueError, match="archive|repo"):
             archiver.archive_experiment("exp-fail", exp_data, fallback=False)
 
+    def test_fallback_when_repo_write_fails(self, tmp_path):
+        # A repo can validate (.git present) yet fail to write. Simulate by
+        # pre-creating results.json as a directory so write_text raises OSError.
+        repo = tmp_path / "repo"
+        (repo / ".git").mkdir(parents=True)
+        (repo / "exp-x").mkdir()
+        (repo / "exp-x" / "results.json").mkdir()
+        fallback_root = tmp_path / "fallback"
+        archiver = ResultsArchiver(repo_path=repo, fallback_dir=fallback_root)
+
+        result = archiver.archive_experiment(
+            "exp-x", {"experiment_id": "exp-x"}, fallback=True)
+
+        assert result == fallback_root.resolve() / "exp-x" / "results.json"
+        assert result.is_file()
+
+    def test_repo_write_failure_raises_when_no_fallback(self, tmp_path):
+        repo = tmp_path / "repo"
+        (repo / ".git").mkdir(parents=True)
+        (repo / "exp-y").mkdir()
+        (repo / "exp-y" / "results.json").mkdir()
+        archiver = ResultsArchiver(repo_path=repo)
+        with pytest.raises(OSError):
+            archiver.archive_experiment(
+                "exp-y", {"experiment_id": "exp-y"}, fallback=False)
+
     def test_rejects_path_traversal_experiment_id(self, tmp_path):
         repo = tmp_path / "results"
         repo.mkdir()
