@@ -10,12 +10,32 @@ Run a full-factorial experiment comparing agent configurations (models, effort l
 ## Usage
 
 ```
-/eval-anova                    # interactive: design → run → analyze → report
-/eval-anova --dry-run          # validate config + estimate cost, no execution
-/eval-anova --analyze-only     # re-analyze existing results + re-render reports
+python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval.yaml               # run → analyze → report
+python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval.yaml --dry-run     # design + cost estimate, no execution
+python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval.yaml --analyze-only  # re-analyze existing runs + re-render
 ```
 
 New to this skill? See [QUICKSTART.md](QUICKSTART.md) for from-scratch setup and run steps.
+
+## How it works
+
+eval-anova is **not** its own executor — it wraps `/eval-run` in a matrix loop:
+
+- **eval-run** stays the single-condition primitive (one model/config → one run with a
+  `summary.yaml`). eval-anova runs it **once per matrix cell** (condition × replication), so every
+  cell is a standard run under `$AGENT_EVAL_RUNS_DIR/<eval-name>/`, tagged with a `condition.json`
+  recording its factor levels.
+- **Statistics** are computed over those runs' `summary.yaml` files (`analyze.py` →
+  `anova.json`): each case's composite uses the harness's canonical reward composition (the
+  eval.yaml `reward:` section, else boolean-gate + normalised-numeric average), then
+  repeated-measures / mixed-effects ANOVA + a cost/quality Pareto frontier.
+- **The report** is `/eval-compare`, which eval-anova invokes over the runs. eval-compare surfaces
+  the ANOVA/Pareto stats automatically when it finds `anova.json`, and stays a standalone
+  descriptive comparison when it does not.
+
+Because the stats read standard `summary.yaml` runs, you can also analyze runs produced elsewhere
+(e.g. a CI fan-out that runs `/eval-run` per model) — just point `--analyze-only` at their
+directory.
 
 ## Prerequisites
 
@@ -25,41 +45,33 @@ Install ANOVA dependencies:
 pip install -e ".[anova]"
 ```
 
-Set the results archival repo:
-
-```bash
-export RHAI_RESULTS_REPO=/path/to/rhai-results
-```
+Results archival is optional — set `RHAI_RESULTS_REPO=/path/to/results` to archive experiments to a
+git repo (a per-user temp dir is used as a fallback when unset).
 
 ## Workflow
 
-1. **Design**: Define factors and levels in your eval YAML's `matrix:` section
-2. **Preflight**: Validate archive repo, estimate cost
-3. **Execute**: Run each condition × case × replication cell
-4. **Score**: Composite scoring with bool/int separation and gate logic
-5. **Analyze**: Repeated-measures ANOVA + Pareto frontier → `analysis.json`
-6. **Report**: Render `report.html` per run + a pooled `anova-summary.html` model comparison
-7. **Archive**: Results saved to git-backed repo (or local fallback)
+1. **Design**: Define factors and levels in your eval YAML's `matrix:` section (`--dry-run` prints
+   the grid + a cost estimate).
+2. **Execute**: For each condition × replication, drive `/eval-run` (workspace → execute → collect
+   → score) → one standard run + `summary.yaml`, tagged with `condition.json`.
+3. **Analyze**: Repeated-measures / mixed-effects ANOVA + cost/quality Pareto over the runs →
+   `anova.json` (`--analyze-only` runs just this over existing runs).
+4. **Report**: `/eval-compare` renders the cross-condition comparison, including the statistics
+   section, from the runs + `anova.json`.
 
 ## Reports
 
-After analysis, generate reports from the `analysis.json` files (no re-run needed):
+The orchestrator invokes `/eval-compare` automatically. To (re-)render from existing artifacts:
 
 ```bash
-python3 skills/eval-anova/scripts/report.py [RUNS_DIR]   # default: $AGENT_EVAL_RUNS_DIR or eval/runs
+# Comparison report (leaderboard, heatmap, + the ANOVA/Pareto stats section if anova.json exists):
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/eval-compare/scripts/compare.py generate $AGENT_EVAL_RUNS_DIR/<eval-name>
+
+# Statistics-forward deep view for one experiment (condition means, F / p / η², per-case matrix):
+python3 ${CLAUDE_SKILL_DIR}/scripts/report.py $AGENT_EVAL_RUNS_DIR/<eval-name>   # reads anova.json
 ```
 
-This writes, into the runs directory:
-
-- **`<run>/report.html`** + **`<run>/report.md`** — per-run ANOVA detail: condition means
-  (ranked, with bars), F / p / η² tiles, a significance badge, and a per-case pass/fail matrix.
-- **`anova-summary.html`** — the **model comparison**: an overall leaderboard pooled across all
-  runs and cases (mean score + pass rate), a model × task heatmap (best per task highlighted),
-  and a secondary per-run table linking to each run report.
-
-`report.py` reads only `analysis.json` (and `all_results.json`); it never re-runs the experiment,
-so it is safe to re-render at any time. The `/eval-anova` workflow invokes it automatically as
-the Report step; `--analyze-only` re-renders too.
+Both read only on-disk artifacts (`summary.yaml` / `anova.json`) and never re-run the experiment.
 
 ## Matrix Configuration
 

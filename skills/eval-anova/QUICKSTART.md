@@ -61,21 +61,25 @@ Add cases under `eval/<name>/dataset/cases/<case>/input.yaml`.
 See `references/matrix-schema.md` for the full matrix schema.
 
 ## 4. Validate + estimate cost (no execution)
-    /eval-anova --dry-run
+    python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval/<name>/eval.yaml --dry-run
 
 ## 5. Run it
-    /eval-anova        # design -> run every model x case x replication -> score -> ANOVA -> report
-Results land in `eval/runs/anova-<timestamp>/` (analysis.json, all_results.json, cells/),
-and the report step writes `report.html` per run plus a pooled `anova-summary.html`.
+    python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval/<name>/eval.yaml
+Each matrix cell runs `/eval-run` once, so every condition lands as a standard run under
+`eval/runs/<eval-name>/<run-id>/` (with its `summary.yaml` + a `condition.json`). The
+orchestrator then writes `eval/runs/<eval-name>/anova.json` and renders the `/eval-compare`
+comparison report (which includes the ANOVA/Pareto statistics section).
 
 ## 6. Re-analyze without re-running
-    /eval-anova --analyze-only
+    python3 ${CLAUDE_SKILL_DIR}/scripts/orchestrate.py --config eval/<name>/eval.yaml --analyze-only
+This re-reads the existing runs' `summary.yaml` files → recomputes `anova.json` → re-renders. It
+also works over runs produced elsewhere (e.g. a CI fan-out of `/eval-run`).
 
 ## 7. Render reports manually (optional)
-The report step runs automatically, but you can re-render any time from existing data:
-    python3 skills/eval-anova/scripts/report.py [RUNS_DIR]   # default: $AGENT_EVAL_RUNS_DIR or eval/runs
-Open `eval/runs/anova-summary.html` for the model comparison (leaderboard + model×task heatmap),
-or a run's `report.html` for its ANOVA detail.
+    # Comparison (leaderboard, heatmap, + stats section when anova.json exists):
+    python3 ${CLAUDE_PLUGIN_ROOT}/skills/eval-compare/scripts/compare.py generate eval/runs/<eval-name>
+    # Statistics-forward deep view for one experiment:
+    python3 ${CLAUDE_SKILL_DIR}/scripts/report.py eval/runs/<eval-name>   # reads anova.json
 
 ## Notes
 - Use current model IDs (Opus 4.8 `claude-opus-4-8`, Sonnet 4.6 `claude-sonnet-4-6`,

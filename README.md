@@ -85,7 +85,7 @@ pip install -e ./agent-eval-harness
 claude --plugin-dir ./agent-eval-harness
 ```
 
-This makes all eval skills available: `/eval-setup`, `/eval-analyze`, `/eval-dataset`, `/eval-run`, `/eval-review`, `/eval-mlflow`, `/eval-optimize`, `/eval-compare`, and `/eval-check`.
+This makes all eval skills available: `/eval-setup`, `/eval-analyze`, `/eval-dataset`, `/eval-run`, `/eval-review`, `/eval-mlflow`, `/eval-optimize`, `/eval-compare`, `/eval-anova`, and `/eval-check`.
 
 ### 2. Set up environment
 
@@ -642,6 +642,18 @@ Compare evaluation results across multiple models or runs. Scans a directory of 
 /eval-compare <input-dir> --overview "<context>"   # Add a context paragraph
 ```
 
+When an `/eval-anova` `anova.json` is present in the input directory, the report also gains an ANOVA/Pareto **Statistical Significance** section. eval-compare works standalone without it (it never imports the stats libraries).
+
+### /eval-anova
+
+Design-of-Experiments over a `matrix:` of agent configurations. eval-run runs one condition; `/eval-anova` reads the matrix and fans out `/eval-run` per cell (condition × replication) into standard runs, then computes repeated-measures / mixed-effects ANOVA + a cost/quality Pareto frontier over their `summary.yaml` files (`anova.json`) and renders the comparison via `/eval-compare`. Because the statistics read standard runs, it can also analyze runs produced by a CI fan-out. Requires the `anova` extra.
+
+```
+/eval-anova --config eval.yaml                # run every cell → analyze → report
+/eval-anova --config eval.yaml --dry-run      # design + cost estimate, no execution
+/eval-anova --config eval.yaml --analyze-only # re-analyze existing runs + re-render
+```
+
 ### /eval-review
 
 Interactive human review of eval results. Presents judge scores and outputs, collects qualitative feedback, analyzes patterns, and proposes SKILL.md changes.
@@ -705,7 +717,8 @@ skills/
   eval-review/           # Interactive human review
   eval-mlflow/           # MLflow integration
   eval-optimize/         # Automated refinement loop
-  eval-compare/          # Cross-run / cross-model comparison report
+  eval-compare/          # Cross-run / cross-model comparison report (+ ANOVA stats section)
+  eval-anova/            # DoE/ANOVA matrix experiments (orchestrates eval-run)
   eval-check/            # Full-harness configuration health check
 ```
 

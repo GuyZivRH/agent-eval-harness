@@ -26,7 +26,7 @@ Run the discovery script to find all valid eval runs:
 python3 ${CLAUDE_SKILL_DIR}/scripts/compare.py discover <input-dir>
 ```
 
-This recursively scans for directories containing `summary.yaml` and prints a JSON manifest of discovered runs with model names, costs, and judge scores. Just pass the input directory — do not search for files yourself.
+This recursively scans for directories containing `summary.yaml` and prints a JSON manifest of discovered runs with model names, costs, and judge scores. Just pass the input directory — do not search for files yourself. If the input dir also contains an `anova.json` (written by `/eval-anova`), the manifest reports `"has_stats": true` and the generated report gains an ANOVA/Pareto **Statistical Significance** section automatically — no extra step needed. eval-compare works with or without it.
 
 If no valid runs are found, report the error and stop.
 
