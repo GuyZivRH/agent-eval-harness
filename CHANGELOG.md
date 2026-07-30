@@ -1,3 +1,23 @@
+# [1.25.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.24.0...v1.25.0) (2026-07-30)
+
+
+### Bug Fixes
+
+* **eval-analyze:** address review feedback on assess_skills ([6dab5d7](https://github.com/opendatahub-io/agent-eval-harness/commit/6dab5d73a7ac2bd4c24215ddce442885757e0e00))
+* **eval-analyze:** address review feedback on scoped tools, EXISTS detection, excerpt fences, and symlinks ([5793cd3](https://github.com/opendatahub-io/agent-eval-harness/commit/5793cd39085acbb42322d32bd365ffb098ed48ed))
+* **eval-analyze:** clean up stale --assess guard and Modes block placement ([9270432](https://github.com/opendatahub-io/agent-eval-harness/commit/92704329f2734201fe62db5d0837871fd723e8d8))
+* **eval-analyze:** correct EXISTS detection and tool/excerpt handling in assess ([205e4ef](https://github.com/opendatahub-io/agent-eval-harness/commit/205e4ef1f1f8cc99da1ab0842601f04d0947cdc1))
+* **eval-analyze:** guard glob results against symlink path traversal ([46b5452](https://github.com/opendatahub-io/agent-eval-harness/commit/46b545267066deedd1079e05416a86fc09cb3e69))
+* **eval-analyze:** make out-of-project skill skip actionable ([e51698f](https://github.com/opendatahub-io/agent-eval-harness/commit/e51698fea0a4d9d70356d49e91926730a52584db))
+* **eval-analyze:** treat skill_body_excerpt as untrusted data ([220b9a4](https://github.com/opendatahub-io/agent-eval-harness/commit/220b9a430168410d1f258b6f4ce76ef48bb5f6bf))
+* **eval-analyze:** trim SKILL.md below 4500 token warn limit ([1b9bd3c](https://github.com/opendatahub-io/agent-eval-harness/commit/1b9bd3c3e9c2a362e95f59cccd9e113059c661b3))
+* **eval-analyze:** use correct eval/ directory layout in _has_existing_eval ([73c99d8](https://github.com/opendatahub-io/agent-eval-harness/commit/73c99d80f588379c2b5129842103e20d0172a9ce))
+
+
+### Features
+
+* **eval-analyze:** add --assess flag to score skills for eval-worthiness ([6aa8163](https://github.com/opendatahub-io/agent-eval-harness/commit/6aa81630b57ea085ce65d7a216ec84fbbf8b3408)), closes [#144](https://github.com/opendatahub-io/agent-eval-harness/issues/144)
+
 # [1.24.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.23.0...v1.24.0) (2026-07-30)
 
 
