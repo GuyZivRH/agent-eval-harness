@@ -94,14 +94,3 @@ def test_render_html_escapes_user_controlled_ids():
     rendered = report.render_html(evil, analysis)
     assert "<img src=y onerror" not in rendered
     assert "&lt;img" in rendered
-
-
-def test_render_summary_escapes_user_controlled_ids():
-    report = load_report_module()
-    evil = "m<script>alert(1)</script>"
-    pooled = {evil: [0.5]}
-    by_task = {evil: {evil: [0.5]}}
-    run_items = [{"run": evil, "cases": 1, "best": evil, "F": "1.0", "p": "0.2", "sig": False}]
-    rendered = report.render_summary(run_items, pooled, by_task, [evil], 1, [])
-    assert "<script>alert(1)</script>" not in rendered
-    assert "&lt;script&gt;" in rendered

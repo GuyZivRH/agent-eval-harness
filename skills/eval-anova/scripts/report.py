@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Render anova reports from existing analysis.json. No re-run.
-Summary = head-to-head model comparison pooled across all runs.
+"""Render eval-anova's deep ANOVA detail report from an anova.json artifact.
+
+Reads a single anova.json (written by analyze.analyze_runs) and renders the
+per-experiment ANOVA detail — condition means (ranked), F / p / eta-squared
+tiles, a significance badge, and a per-case matrix. The pooled cross-model
+comparison (leaderboard, model x task heatmap) lives in /eval-compare, which
+surfaces these same statistics; this is the statistics-forward companion view.
 
 Usage:
-    python3 report.py [RUNS_DIR]   # default: $AGENT_EVAL_RUNS_DIR or eval/runs
-
-Renders per-run report.{md,html} for every anova-* run, plus a pooled
-    anova-summary.html (model comparison) in RUNS_DIR. Reads only analysis.json."""
-import json, glob, os, sys, html, datetime
+    python3 report.py [PATH]
+    #  PATH may be an anova.json file, a dir containing one, or a runs dir.
+    #  Default: $AGENT_EVAL_RUNS_DIR or eval/runs. Reads only anova.json."""
+import json, os, sys, html, datetime
 from pathlib import Path
 
-BASE = (sys.argv[1] if len(sys.argv) > 1
-        else os.environ.get("AGENT_EVAL_RUNS_DIR", "eval/runs"))
-RUNS = sorted(d for d in glob.glob(os.path.join(BASE, "anova-*")) if os.path.isdir(d))
 NOW = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 CSS = """
@@ -68,12 +69,6 @@ def cmodel(c):  # model name from a condition summary: flat, nested, or id
     if not c:
         return "?"
     return c.get("model") or c.get("levels",{}).get("model") or c.get("condition_id","?")
-def heat_bg(v, lo=0.0, hi=1.0):  # green-ish scale over [lo,hi], clamped
-    if v is None: return "#1d2026"
-    t=(v-lo)/(hi-lo) if hi>lo else 0.5
-    t=max(0.0,min(1.0,t))
-    r=int(0x2c+(0x2e-0x2c)*t); g=int(0x31+(0xa0-0x31)*t); b=int(0x3b+(0x43-0x3b)*t)
-    return f"#{r:02x}{g:02x}{b:02x}"
 def sig_any(an):
     sig=an.get("significant")
     if isinstance(sig,dict):
@@ -124,7 +119,7 @@ def factor_p_table(an):
 def render_md(rid,d):
     des,conds,an,per=(d.get("design",{}),d.get("condition_summaries",[]),d.get("anova",{}),d.get("per_case",{}))
     cases=sorted({c for m in per.values() for c in m}) if per else []
-    L=[f"# ANOVA Report — {rid}","",f"*Generated {NOW} from `analysis.json`.*","","## Condition means (ranked)","",
+    L=[f"# ANOVA Report — {rid}","",f"*Generated {NOW} from `anova.json`.*","","## Condition means (ranked)","",
        "| Rank | Model | Mean | Std | n |","|---|---|---|---|---|"]
     for i,c in enumerate(sorted(conds,key=lambda x:-x.get("mean",0)),1):
         L.append(f"| {i} | {cmodel(c)} | {fnum(c.get('mean'))} | {fnum(c.get('std'))} | {c.get('n','?')} |")
@@ -185,107 +180,47 @@ def render_html(rid,d):
                       "<td class=cell-fail>·</td>" if v in (0,0.0) else f"<td class=cell-fail>{'—' if v is None else esc(v)}</td>")
             body+=f"<tr>{tds}</tr>"
         matrix=f"<div class=card><h2>Per-case scores</h2><table><thead>{head}</thead><tbody>{body}</tbody></table></div>"
-    body=(f"<p><a href='../anova-summary.html'>← model comparison</a></p>"
-          f"<h1>ANOVA — {esc(rid)}</h1><div class=sub>{badge}</div>"
+    body=(f"<h1>ANOVA — {esc(rid)}</h1><div class=sub>{badge}</div>"
           f"<div class=card><h2>Experiment</h2>{meta}</div>"
           f"<div class=card><h2>Condition means (ranked)</h2>{means}</div>"
           f"<div class=card><h2>ANOVA</h2>{anova}</div>{matrix}"
-          f"<footer>Generated {NOW} from <code>analysis.json</code> · scores are composite pass/fail (1.0=pass).</footer>")
+          f"<footer>Generated {NOW} from <code>anova.json</code> · composite scores in [0,1].</footer>")
     return page(f"ANOVA — {rid}",body)
 
-# ---------- SUMMARY = pooled head-to-head model comparison ----------
-def render_summary(run_items, pooled, by_task, tasks, n_runs, incomplete):
-    models=sorted(pooled.keys())
-    # leaderboard
-    def mean(xs): return sum(xs)/len(xs) if xs else 0.0
-    lb=sorted(models,key=lambda m:-mean(pooled[m]))
-    lrows=""
-    for i,m in enumerate(lb,1):
-        xs=pooled[m]; mu=mean(xs); solved=sum(1 for s in xs if isinstance(s,(int,float)) and s>=1.0)
-        rk="rank1" if i==1 else ""
-        lrows+=(f"<tr><td class=num>{i}</td><td class='{rk}'>{esc(m)}</td>"
-                f"<td class=num>{mu:.3f}</td><td class=num>{solved}/{len(xs)}</td>"
-                f"<td class=num>{(solved/len(xs)*100 if xs else 0):.0f}%</td>"
-                f"<td style='width:200px'><div class=bar><i style='width:{min(100.0,max(0.0,mu*100)):.0f}%'></i></div></td></tr>")
-    leaderboard=(f"<table><thead><tr><th>#</th><th>Model</th><th class=num>Mean score</th>"
-                 f"<th class=num>Solved (=1.0)</th><th class=num>% solved</th><th></th></tr></thead><tbody>{lrows}</tbody></table>")
-    # model x task heatmap (mean over runs), colour-scaled over the observed range
-    head="<tr><th>Task</th>"+"".join(f"<th class=ctr>{esc(m)}</th>" for m in models)+"<th class=ctr>best</th></tr>"
-    all_vals=[mean(by_task[m][t]) for m in models for t in tasks if by_task[m].get(t)]
-    heat_lo=min(all_vals) if all_vals else 0.0
-    heat_hi=max(all_vals) if all_vals else 1.0
-    trows=""
-    for t in tasks:
-        cells=""; vals={m:(mean(by_task[m][t]) if by_task[m][t] else None) for m in models}
-        best=max((v for v in vals.values() if v is not None), default=None)
-        for m in models:
-            v=vals[m]
-            cls="win" if (v is not None and best is not None and v>=best>0) else ""
-            disp="—" if v is None else f"{v:.2f}"
-            cells+=f"<td class='heat {cls}' style='background:{heat_bg(v,heat_lo,heat_hi)}'>{disp}</td>"
-        winner=", ".join(esc(m) for m in models if vals[m] is not None and best and vals[m]>=best>0) or "—"
-        trows+=f"<tr><td>{esc(t)}</td>{cells}<td class=ctr>{winner}</td></tr>"
-    heatmap=f"<table><thead>{head}</thead><tbody>{trows}</tbody></table>"
-    # overall winner callout
-    champ=lb[0] if lb else "—"
-    champ_mu=mean(pooled[champ]) if lb else 0
-    runner=lb[1] if len(lb)>1 else None
-    sig_runs=[it for it in run_items if it["sig"]]
-    note=(f"Across <b>{n_runs} runs</b> ({sum(len(pooled[m]) for m in models)} scored model-cases), "
-          f"<b>{esc(champ)}</b> leads with mean {champ_mu:.3f}"
-          + (f", ahead of {esc(runner)} ({mean(pooled[runner]):.3f})." if runner else ".")
-          + f" <b>{len(sig_runs)}/{n_runs}</b> individual run(s) reached statistical significance (p&lt;0.05).")
-    # per-run table (secondary)
-    rrows=""
-    for it in run_items:
-        cls=" style='background:#11251a'" if it["sig"] else ""
-        sigtxt="<span class='badge sig'>yes</span>" if it["sig"] else "<span class=sub>no</span>"
-        rrows+=(f"<tr{cls}><td><a href='{esc(it['run'])}/report.html'>{esc(it['run'])}</a></td>"
-                f"<td class=num>{it['cases']}</td><td>{esc(it['best'])}</td>"
-                f"<td class=num>{it['F']}</td><td class=num>{it['p']}</td><td>{sigtxt}</td></tr>")
-    inc=(f"<div class=sub style='margin-top:14px'>Incomplete (no analysis): {', '.join(esc(i) for i in incomplete)}</div>" if incomplete else "")
-    subtitle=(f"{' vs '.join(esc(x) for x in lb)} · {len(tasks)} task(s) · {n_runs} runs pooled"
-              if lb else f"{len(tasks)} task(s) · {n_runs} runs pooled")
-    body=(f"<h1>Model Comparison — ANOVA</h1>"
-          f"<div class=sub>{subtitle}</div>"
-          f"<div class=card><div class=callout>{note}</div></div>"
-          f"<div class=card><h2>Overall leaderboard (pooled across all runs &amp; cases)</h2>{leaderboard}</div>"
-          f"<div class=card><h2>Model × task — mean score (across runs)</h2>{heatmap}"
-          f"<div class=sub style='margin-top:10px'>Greener = higher mean score. Best per task highlighted.</div></div>"
-          f"<div class=card><h2>Individual runs</h2><table><thead><tr><th>Run</th><th class=num>Cases</th>"
-          f"<th>Best</th><th class=num>F</th><th class=num>p</th><th>Sig</th></tr></thead><tbody>{rrows}</tbody></table>{inc}</div>"
-          f"<footer>Generated {NOW} from <code>analysis.json</code> files · no re-run.</footer>")
-    return page("Model Comparison — ANOVA",body)
+def _resolve_artifact(base):
+    """Locate the anova.json to render: a file, a dir containing one, or a
+    runs dir with a single one below it."""
+    p = Path(base)
+    if p.is_file():
+        return p
+    if p.is_dir():
+        direct = p / "anova.json"
+        if direct.is_file():
+            return direct
+        matches = list(p.rglob("anova.json"))
+        if len(matches) == 1:
+            return matches[0]
+    return None
 
 def main():
-    written,run_items,incomplete=[],[],[]
-    pooled={}; by_task={}; tasks=[]
-    for run in RUNS:
-        aj=os.path.join(run,"analysis.json")
-        if not os.path.exists(aj): incomplete.append(os.path.basename(run)); continue
-        try:
-            with open(aj) as f: d=json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
-            print(f"Warning: skipping {aj}: {exc}", flush=True)
-            incomplete.append(os.path.basename(run)); continue
-        rid=d.get("run_id",os.path.basename(run))
-        Path(os.path.join(run,"report.md")).write_text(render_md(rid,d)+"\n")
-        Path(os.path.join(run,"report.html")).write_text(render_html(rid,d))
-        written.append(rid)
-        an=d.get("anova",{});conds=d.get("condition_summaries",[]);per=d.get("per_case",{})
-        best=max(conds,key=lambda x:x.get("mean",0)) if conds else None
-        run_items.append({"run":rid,"cases":d.get("design",{}).get("n_cases","—"),
-            "best":f"{cmodel(best)} ({fnum(best['mean'],2)})" if best else "—",
-            "F":fnum(an.get("f_statistic"),2),"p":fnum(best_p(an),3),"sig":sig_any(an)})
-        for model,cs in per.items():
-            sm=model; pooled.setdefault(sm,[]); by_task.setdefault(sm,{})
-            for case,score in cs.items():
-                if case not in tasks: tasks.append(case)
-                pooled[sm].append(score); by_task[sm].setdefault(case,[]).append(score)
-    tasks=sorted(tasks)
-    Path(os.path.join(BASE,"anova-summary.html")).write_text(render_summary(run_items,pooled,by_task,tasks,len(written),incomplete))
-    print(f"Rendered {len(written)} run reports + pooled model-comparison summary. Incomplete: {incomplete or 'none'}")
-    print("Models pooled:", {m:len(v) for m,v in pooled.items()})
+    base = (sys.argv[1] if len(sys.argv) > 1
+            else os.environ.get("AGENT_EVAL_RUNS_DIR", "eval/runs"))
+    artifact = _resolve_artifact(base)
+    if artifact is None:
+        print(f"No anova.json found under {base}", file=sys.stderr)
+        return 1
+    try:
+        with open(artifact) as f:
+            d = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"Cannot read {artifact}: {exc}", file=sys.stderr)
+        return 1
+    rid = d.get("run_id") or d.get("design", {}).get("experiment_id") or "anova"
+    outdir = artifact.parent
+    (outdir / "anova-report.html").write_text(render_html(rid, d))
+    (outdir / "anova-report.md").write_text(render_md(rid, d) + "\n")
+    print(f"Rendered {outdir / 'anova-report.html'}")
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
