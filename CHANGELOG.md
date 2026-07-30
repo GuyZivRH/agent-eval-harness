@@ -1,3 +1,17 @@
+# [1.24.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.23.0...v1.24.0) (2026-07-30)
+
+
+### Bug Fixes
+
+* **collect:** route per-case subagent traces in batch mode ([1150370](https://github.com/opendatahub-io/agent-eval-harness/commit/115037027308c0f2f362abc9bd3cea64a6b0c2e7))
+* **eval-run:** warn on silent trace-routing gaps (addresses CodeRabbit [#163](https://github.com/opendatahub-io/agent-eval-harness/issues/163)) ([efb10d6](https://github.com/opendatahub-io/agent-eval-harness/commit/efb10d67f7fc4586c37e9c2ad7dcaf7e628f9902))
+
+
+### Features
+
+* **events:** preserve extended-thinking (chain-of-thought) in parsed traces ([187f386](https://github.com/opendatahub-io/agent-eval-harness/commit/187f3865266d33dd3dc6640793dc9be536892420))
+* **score:** CoT-inclusive {{ reasoning }} judge var + warn on undefined template vars ([70d676d](https://github.com/opendatahub-io/agent-eval-harness/commit/70d676dee3d84112e3077660bd6da8580a024ee0))
+
 # [1.23.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.22.1...v1.23.0) (2026-07-28)
 
 
