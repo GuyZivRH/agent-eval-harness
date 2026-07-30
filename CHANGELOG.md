@@ -1,3 +1,15 @@
+# [1.27.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.26.0...v1.27.0) (2026-07-30)
+
+
+### Bug Fixes
+
+* **stream-capture:** exclude placeholder models from per-model accounting ([2378499](https://github.com/opendatahub-io/agent-eval-harness/commit/2378499cf97d189af27045246630bcccd0a74e31))
+
+
+### Features
+
+* **harbor:** per-model usage/cost breakdown ([70f79aa](https://github.com/opendatahub-io/agent-eval-harness/commit/70f79aa2955d8e2306eac8b3d46b01a8f1f3fde1))
+
 # [1.26.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.25.0...v1.26.0) (2026-07-30)
 
 
