@@ -35,6 +35,25 @@ outputs:
     schema: "solution.diff — the agent's changes captured by solve.sh"
 
 judges:
+  - name: tests_pass
+    description: The touched Go module's tests pass on the agent's fix (objective gate).
+    check: |
+      import json
+      files = outputs.get("files", {})
+      for path, content in files.items():
+          if path.endswith("tests.json") and isinstance(content, str):
+              try:
+                  d = json.loads(content)
+              except json.JSONDecodeError as exc:
+                  return False, f"malformed tests.json: {exc}"
+              p = d.get("passed")
+              if p is True:
+                  return True, "module tests passed"
+              if p is False:
+                  return False, "module tests failed"
+              return False, d.get("skipped", "tests not run")
+      return False, "no tests.json in outputs"
+
   - name: solution_quality
     description: LLM judge — does the agent's diff solve the task vs the oracle?
     feedback_type: int
@@ -59,16 +78,18 @@ judges:
       {"score": <int 1-5>, "rationale": "<one sentence>"}
 
 thresholds:
+  tests_pass:
+    min_pass_rate: 0.5
   solution_quality:
     min_mean: 3.0
 
-# model × context matrix. `model` maps to the runner's --model; `context`
-# (cognee | none) is a non-model factor injected into the command via
-# --input-override, selecting output/mcp-{context}.json.
+# context A/B matrix (matches the original harbor-maas design): one model, with
+# vs without the cognee MCP. `context` is a non-model factor injected into the
+# command via --input-override, selecting {config_dir}/mcp-{context}.json. Add
+# more models to the `model` list to turn this into a model × context grid.
 matrix:
   factors:
     model:
-      - claude-opus-4-8
       - claude-sonnet-4-6
     context:
       - cognee

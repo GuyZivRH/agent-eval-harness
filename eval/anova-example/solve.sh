@@ -50,4 +50,35 @@ fi
 # Capture the agent's edits as the solution diff.
 git -C "$repo" add -A
 git -C "$repo" diff --cached > "$out/solution.diff"
-echo "solve.sh: wrote $out/solution.diff ($(wc -l < "$out/solution.diff") lines)"
+
+# Run the tests for the Go module(s) the agent touched and record a pass/fail in
+# tests.json — the objective signal the tests_pass gate scores (this is the
+# local, Harbor-free equivalent of the original Harbor verifier). Override the
+# command with TEST_CMD; skipped cleanly when the Go toolchain is unavailable.
+modules="$(git -C "$repo" diff --cached --name-only | awk -F/ 'NF>=2 && $1!="" {print $1}' | sort -u)"
+if [ -n "${TEST_CMD:-}" ]; then
+  if ( cd "$repo" && TEST_MODULES="$modules" bash -c "$TEST_CMD" ) > "$out/tests.log" 2>&1; then
+    echo '{"passed": true}' > "$out/tests.json"
+  else
+    echo '{"passed": false}' > "$out/tests.json"
+  fi
+elif command -v go >/dev/null 2>&1 && [ -n "$modules" ]; then
+  passed=""
+  for m in $modules; do
+    [ -f "$repo/$m/go.mod" ] || continue
+    if ( cd "$repo/$m" && go test ./... ) >> "$out/tests.log" 2>&1; then
+      [ "$passed" = "false" ] || passed=true
+    else
+      passed=false
+    fi
+  done
+  if [ -z "$passed" ]; then
+    echo '{"passed": null, "skipped": "no Go module with go.mod among the changes"}' > "$out/tests.json"
+  else
+    printf '{"passed": %s}\n' "$passed" > "$out/tests.json"
+  fi
+else
+  echo '{"passed": null, "skipped": "go toolchain unavailable or no modules touched"}' > "$out/tests.json"
+fi
+
+echo "solve.sh: wrote $out/solution.diff ($(wc -l < "$out/solution.diff") lines), $out/tests.json"

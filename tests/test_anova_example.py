@@ -35,9 +35,11 @@ def test_config_and_matrix_valid():
     assert cfg.eval_name() == "anova-example"
     matrix = MatrixBuilder.from_yaml(EVAL, strict=True)
     conds = MatrixBuilder.expand_full_factorial(matrix.factors)
-    assert len(conds) == 4  # 2 models × 2 contexts
+    assert len(conds) == 2  # 1 model × 2 contexts (a cognee A/B)
     # cli runner references the config_dir + context placeholders
     assert "{config_dir}" in cfg.runner.command and "{context}" in cfg.runner.command
+    # both judges are defined: the objective tests_pass gate + the LLM rubric
+    assert {j.name for j in cfg.judges} == {"tests_pass", "solution_quality"}
 
 
 def test_dry_run_estimates_cost_without_executing(tmp_path, monkeypatch, capsys):
@@ -55,9 +57,14 @@ def test_analyze_only_over_sample_runs(tmp_path):
     cfg = EvalConfig.from_yaml(str(EVAL))
     analysis, _ = analyze_runs(SAMPLE, cfg, write_to=tmp_path / "anova.json")
 
-    assert set(analysis["design"]["factors"]) == {"model", "context"}
     assert analysis["design"]["n_cases"] == 4  # the four maas tasks
-    assert analysis["anova"]["significant"]["model"] is True  # model differs on sample data
+    # single-model matrix → the ANOVA is a one-way comparison over context
+    assert analysis["anova"]["factor"] == "context"
+    assert "repeated" in analysis["anova"]["method"].lower()
+    # composite = tests_pass gate × normalised solution_quality, so cognee
+    # (more passing tests + higher quality on the sample data) beats none
+    means = {c["context"]: c["mean"] for c in analysis["condition_summaries"]}
+    assert means["cognee"] > means["none"]
 
     stats = json.loads((tmp_path / "anova.json").read_text())
     out = tmp_path / "report"
@@ -83,10 +90,18 @@ def test_solve_sh_captures_agent_diff(tmp_path):
     base = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
 
+    # TEST_CMD stubs the test run so we exercise the tests_pass gate output too.
     env = dict(os.environ, MAAS_REPO_URL=str(src), MAAS_BASE_COMMIT=base,
-               AGENT_CMD="echo fixed > NEWFILE.txt")
+               AGENT_CMD="echo fixed > NEWFILE.txt", TEST_CMD="true")
     r = subprocess.run(["bash", str(EXAMPLE / "solve.sh"), str(ws), str(out),
                         "test-model", ""], env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    diff = (out / "solution.diff").read_text()
-    assert "NEWFILE.txt" in diff
+    assert "NEWFILE.txt" in (out / "solution.diff").read_text()
+    assert json.loads((out / "tests.json").read_text())["passed"] is True
+
+    # A failing test command → tests_pass gate would fail (passed: false).
+    out2 = tmp_path / "out2"
+    env["TEST_CMD"] = "false"
+    subprocess.run(["bash", str(EXAMPLE / "solve.sh"), str(ws), str(out2),
+                    "test-model", ""], env=env, capture_output=True, text=True)
+    assert json.loads((out2 / "tests.json").read_text())["passed"] is False
