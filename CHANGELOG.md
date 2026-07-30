@@ -1,3 +1,31 @@
+# [1.30.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.29.0...v1.30.0) (2026-07-30)
+
+
+### Bug Fixes
+
+* **eval-anova:** address CodeRabbit findings on kept code ([fb0a68c](https://github.com/opendatahub-io/agent-eval-harness/commit/fb0a68c88f969a14c87baabd5968723dfbef9f34))
+* **eval-anova:** clamp report heat colours and bar widths to range ([c76e203](https://github.com/opendatahub-io/agent-eval-harness/commit/c76e2034476cf19b883dde8c33770268254ad52c)), closes [#report](https://github.com/opendatahub-io/agent-eval-harness/issues/report)
+* **eval-anova:** derive report labels from data, not a hardcoded roster ([e3bf683](https://github.com/opendatahub-io/agent-eval-harness/commit/e3bf68374d9291de799628143095f6cffa3001c6)), closes [#11](https://github.com/opendatahub-io/agent-eval-harness/issues/11) [#18](https://github.com/opendatahub-io/agent-eval-harness/issues/18)
+* **eval-anova:** exclude cases missing from any condition and report them ([2adfa90](https://github.com/opendatahub-io/agent-eval-harness/commit/2adfa90402afd103f919b08f46681c8afba3c246))
+* **eval-anova:** HTML-escape user-controlled values in reports (XSS) ([6fab8a0](https://github.com/opendatahub-io/agent-eval-harness/commit/6fab8a006d3610b8e234baacc61ef6162157ddac))
+* **eval-anova:** ignore single-level factors when selecting the ANOVA ([b177428](https://github.com/opendatahub-io/agent-eval-harness/commit/b177428aaab5ce6b7999d7f79750f8b211f764ee))
+* **eval-anova:** report actual sample size in the non-significant callout ([906c73e](https://github.com/opendatahub-io/agent-eval-harness/commit/906c73e6e688ec94b2e48a438cfbbb13cdfd9bcc)), closes [#10](https://github.com/opendatahub-io/agent-eval-harness/issues/10)
+* **eval-anova:** stop misreporting fractional composites as failures ([09a4515](https://github.com/opendatahub-io/agent-eval-harness/commit/09a4515f10bce06a47983840f793a4a8c0d850ac))
+* **eval-anova:** treat non-finite/negative F as a degenerate design ([fd9feeb](https://github.com/opendatahub-io/agent-eval-harness/commit/fd9feebd1d0ce5301baae08a765b6ee4fb1be078))
+
+
+### Features
+
+* **eval-anova:** add eval/anova-example — real maas tasks on the generic path ([9902237](https://github.com/opendatahub-io/agent-eval-harness/commit/9902237e19288115b4e0e8802f560781a84da59f)), closes [#17](https://github.com/opendatahub-io/agent-eval-harness/issues/17)
+* **eval-anova:** analyze stats over a directory of standard eval-run runs ([e12f100](https://github.com/opendatahub-io/agent-eval-harness/commit/e12f10088053eb2947bd33108e67770d89915577))
+* **eval-anova:** DoE/ANOVA matrix testing skill with harbor-maas-v1 benchmark ([53fb1ce](https://github.com/opendatahub-io/agent-eval-harness/commit/53fb1cef5303eca4b3d34d3550fa2fe64543f9b1)), closes [#104](https://github.com/opendatahub-io/agent-eval-harness/issues/104)
+* **eval-anova:** prefer Greenhouse-Geisser corrected p in rm-ANOVA ([32ddc20](https://github.com/opendatahub-io/agent-eval-harness/commit/32ddc20ed6748f3097c1b1f78c0226b45998db2f))
+* **eval-anova:** restore tests_pass gate + match original context A/B; add Harbor docs ([33fcb42](https://github.com/opendatahub-io/agent-eval-harness/commit/33fcb4259ba5ed7c7db4cdb5bf5cb07ea8216a64))
+* **eval-anova:** runnable matrix orchestrator that fans out over eval-run ([b9ebca5](https://github.com/opendatahub-io/agent-eval-harness/commit/b9ebca52e8b32b32f5874eca2fb4b8f6432f1046)), closes [#5](https://github.com/opendatahub-io/agent-eval-harness/issues/5) [#14](https://github.com/opendatahub-io/agent-eval-harness/issues/14) [#15](https://github.com/opendatahub-io/agent-eval-harness/issues/15) [#17](https://github.com/opendatahub-io/agent-eval-harness/issues/17)
+* **eval-compare:** render eval-anova statistics section when present ([efa3306](https://github.com/opendatahub-io/agent-eval-harness/commit/efa330671d874af1b9da118ad0cabb004abead92))
+* **eval-run:** --input-override to inject run-level values into case inputs ([#17](https://github.com/opendatahub-io/agent-eval-harness/issues/17)) ([4474605](https://github.com/opendatahub-io/agent-eval-harness/commit/447460565ba928dae8106ad7e77e139f1c320098))
+* **eval-run:** add {config_dir} placeholder to the cli runner ([3e0a9f1](https://github.com/opendatahub-io/agent-eval-harness/commit/3e0a9f172e91c7b5f095b686a00eb64b4ee8537f))
+
 # [1.29.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.28.0...v1.29.0) (2026-07-30)
 
 
