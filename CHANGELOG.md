@@ -1,3 +1,11 @@
+# [1.29.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.28.0...v1.29.0) (2026-07-30)
+
+
+### Features
+
+* **eval-run:** mirror execute console to console.log + no-redirect launch ([9c759a2](https://github.com/opendatahub-io/agent-eval-harness/commit/9c759a21822462a12f6772be028658aeca7702f0))
+* **workspace:** auto-set EVAL_RUN_HEADER from --run-id ([fb1576a](https://github.com/opendatahub-io/agent-eval-harness/commit/fb1576a638833b8cb71c391311414929331797aa))
+
 # [1.28.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.27.0...v1.28.0) (2026-07-30)
 
 
