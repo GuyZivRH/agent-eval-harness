@@ -1,3 +1,23 @@
+# [1.28.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.27.0...v1.28.0) (2026-07-30)
+
+
+### Bug Fixes
+
+* address CodeRabbit review feedback ([c379d0a](https://github.com/opendatahub-io/agent-eval-harness/commit/c379d0ae4225de4e60c63fa8472e461393932e27))
+* address CodeRabbit review feedback ([55a8fed](https://github.com/opendatahub-io/agent-eval-harness/commit/55a8fedada64365b3da180d1ebb03726e09a63c5))
+* **eval-compare:** address review — correctness, robustness, report accuracy ([74f5d1e](https://github.com/opendatahub-io/agent-eval-harness/commit/74f5d1e8fb1808e25ab98149c79c75b8eb449681))
+* remove Best Quality badge, strengthen Best Value criteria ([a6d26f8](https://github.com/opendatahub-io/agent-eval-harness/commit/a6d26f85858c73e07579354b27c86152d3828d77))
+* remove hardcoded judge/report names from eval-compare ([e8a61b3](https://github.com/opendatahub-io/agent-eval-harness/commit/e8a61b3299fa81264a424a2ad6acee3520e20026))
+* simplify Best Value badge — best model considering quality and cost ([b2eaeaf](https://github.com/opendatahub-io/agent-eval-harness/commit/b2eaeaf12ffcf6274e59ff60e8e68c4ce27abb3c))
+* use double quotes in f-strings for Python 3.11 compat ([e066dab](https://github.com/opendatahub-io/agent-eval-harness/commit/e066dab9345e846b6a59b2dbda9198a5fa08f06f))
+
+
+### Features
+
+* add eval-compare skill for cross-model comparison reports ([4c5568e](https://github.com/opendatahub-io/agent-eval-harness/commit/4c5568ef54f490b12ef6776dc70e4065043e4e64))
+* **eval-compare:** light/dark theme matching the per-run reports ([2e95cdd](https://github.com/opendatahub-io/agent-eval-harness/commit/2e95cdd8e438592af501910de08a0026d94c5e50))
+* **eval-compare:** make report fully generic + add LLM analysis sections ([9ea4e47](https://github.com/opendatahub-io/agent-eval-harness/commit/9ea4e47e0e44220e33dbd0b264fd743a54a489a7))
+
 # [1.27.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.26.0...v1.27.0) (2026-07-30)
 
 
