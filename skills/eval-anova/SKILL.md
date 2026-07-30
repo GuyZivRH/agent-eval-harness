@@ -1,6 +1,6 @@
 ---
 name: eval-anova
-description: Run Design-of-Experiments (DoE) evaluations with ANOVA statistical analysis. Compares agent configurations across factorial experiment designs with repeated-measures statistics that account for case difficulty.
+description: Run Design-of-Experiments (DoE) evaluations with ANOVA over a matrix of agent configurations — comparing models, thinking-effort levels, prompts, or other factors across shared test cases, with repeated-measures / mixed-effects statistics that account for case difficulty plus a cost/quality Pareto view. Use whenever the user wants to compare models or configurations on an eval, decide which model or config is best, sweep or grid factors, run replications, or check whether a difference in eval scores is statistically significant (F, p, effect size) — even if they don't say "ANOVA" or "DoE". Also use when an eval.yaml has a matrix block or the user asks to fan an eval out across configurations.
 ---
 
 # eval-anova
@@ -81,8 +81,8 @@ Add a `matrix:` key to your eval YAML:
 matrix:
   factors:
     model:
-      - claude-sonnet-4-20250514
-      - claude-haiku-4-5-20251001
+      - claude-opus-4-8
+      - claude-sonnet-4-6
     effort:
       - low
       - high
@@ -95,6 +95,6 @@ See `references/matrix-schema.md` for the full schema.
 
 - **Repeated-measures ANOVA** (default): Accounts for case difficulty as a blocking factor. Correct when the same cases are evaluated under all conditions.
 - **Mixed-effects model**: For multi-factor designs with crossed random effects.
-- **One-way ANOVA**: Only for independent samples (cases NOT reused). Rarely appropriate.
+- **One-way ANOVA**: available in the stats library for independent samples (cases NOT reused), but rarely appropriate — the orchestrator does not auto-select it.
 
 See `prompts/interpret-anova.md` for guidance on interpreting results.

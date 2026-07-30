@@ -25,17 +25,23 @@ matrix:
 
 A mapping of factor names to their levels. Each factor must have at least one level.
 
-**Reserved factor names:**
-- `model`: Maps to `runner_kwargs["model"]` — the LLM model ID
-- All other factors map to `run_skill_kwargs[factor_name]`
+**How factor levels reach the run (per matrix cell):**
+- `model` → the runner's `--model` (the LLM model ID)
+- `effort` → the runner's `--effort` (thinking-effort level)
+- `subagent` / `subagent_model` → `--subagent-model`
+- any other factor → `--input-override <name>=<level>`, which merges the value
+  into the case's `input.yaml`. It then reaches the run only if the runner
+  consumes it — as `{name}` in a `cli` runner command, or `{{ input.name }}` in
+  `execution.arguments` / `execution.prompt`. A factor that nothing consumes
+  still defines conditions but won't change behaviour.
 
 **Example:**
 
 ```yaml
 factors:
   model:
-    - claude-sonnet-4-20250514
-    - claude-haiku-4-5-20251001
+    - claude-opus-4-8
+    - claude-sonnet-4-6
   effort:
     - low
     - high
@@ -45,7 +51,9 @@ factors:
     - 1.0
 ```
 
-This produces 2 × 2 × 3 = 12 conditions.
+This produces 2 × 2 × 3 = 12 conditions. (`temperature` here is a non-model
+factor, so it only affects a run if the runner's command/prompt consumes
+`{temperature}` / `{{ input.temperature }}` — see the mapping above.)
 
 ### `replications` (optional, default: 1)
 
