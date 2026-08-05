@@ -1,3 +1,20 @@
+# [1.32.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.31.0...v1.32.0) (2026-08-05)
+
+
+### Bug Fixes
+
+* **agent-judge:** address CodeRabbit review ([caa1728](https://github.com/opendatahub-io/agent-eval-harness/commit/caa172850e89a3b42fa28fdc9a57f0d6f32f9da7))
+* **agent-judge:** address CodeRabbit round 2 ([bba2959](https://github.com/opendatahub-io/agent-eval-harness/commit/bba2959999a217665a3b4c3cae7104c82b31fb8c))
+* **agent-judge:** chain the --no-llm-judges registry-failure error (B904) ([c779f5d](https://github.com/opendatahub-io/agent-eval-harness/commit/c779f5d7efb864d782065b15703b4959991cec86))
+* **agent-judge:** copy context for write-capable judges; fix blocking guidance ([6c5567a](https://github.com/opendatahub-io/agent-eval-harness/commit/6c5567ab6ca72100bda2176135e140794c2ddd88))
+* **skill:** trim eval-run SKILL.md under the skillsaw context budget ([ca41ff3](https://github.com/opendatahub-io/agent-eval-harness/commit/ca41ff3475173ce583e00828a865a3beea0919f4))
+
+
+### Features
+
+* **judges:** add first-class agent judge type ([8e80378](https://github.com/opendatahub-io/agent-eval-harness/commit/8e8037885c17fb4dfefb2e3495dcd1130c27836b))
+* **report:** group agent judges with LLM judges in the HTML report ([8debd27](https://github.com/opendatahub-io/agent-eval-harness/commit/8debd2783f286c5eddb17580a2b857692cc22637))
+
 # [1.31.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.30.2...v1.31.0) (2026-08-05)
 
 
