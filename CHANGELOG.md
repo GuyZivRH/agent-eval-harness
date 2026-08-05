@@ -1,3 +1,16 @@
+# [1.34.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.33.0...v1.34.0) (2026-08-05)
+
+
+### Bug Fixes
+
+* **mlflow:** harden harness-snapshot load and MLflow fetch ([f12a568](https://github.com/opendatahub-io/agent-eval-harness/commit/f12a5683d5857eac20a7ae6b2c2bab33292306ed))
+* **mlflow:** keep mlflow.runName immutable on tag merge ([14b77df](https://github.com/opendatahub-io/agent-eval-harness/commit/14b77df0169eae29eb0bf92a10dd3047959b813d))
+
+
+### Features
+
+* **mlflow:** load harness-snapshot from disk and MLflow ([3ee0025](https://github.com/opendatahub-io/agent-eval-harness/commit/3ee002569b2a3aea4479f7d8918543db35f147cb))
+
 # [1.33.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.32.0...v1.33.0) (2026-08-05)
 
 
