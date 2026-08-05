@@ -1,3 +1,10 @@
+# [1.31.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.30.2...v1.31.0) (2026-08-05)
+
+
+### Features
+
+* pass GCP_SA_ACCESS_TOKEN to AnthropicVertex when available ([9bad5fb](https://github.com/opendatahub-io/agent-eval-harness/commit/9bad5fb4e222106e8dc2a8af183c10ac0648c86a))
+
 ## [1.30.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.30.1...v1.30.2) (2026-08-05)
 
 
