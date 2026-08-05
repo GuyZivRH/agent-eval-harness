@@ -1,3 +1,21 @@
+# [1.33.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.32.0...v1.33.0) (2026-08-05)
+
+
+### Bug Fixes
+
+* **harbor:** emit multi_step_reward_strategy as a root-level key ([45156dc](https://github.com/opendatahub-io/agent-eval-harness/commit/45156dcde8164c0a89c3c201e64b19d3a7a35a69))
+* **harbor:** share TOML serializer + UTF-8 writes for multi-step tasks ([39d1e73](https://github.com/opendatahub-io/agent-eval-harness/commit/39d1e73496e91b7b4c90215fc930612b6e546d20)), closes [#148](https://github.com/opendatahub-io/agent-eval-harness/issues/148)
+* **multi-step:** address CodeRabbit review on [#172](https://github.com/opendatahub-io/agent-eval-harness/issues/172) ([4a08221](https://github.com/opendatahub-io/agent-eval-harness/commit/4a082217481607e12da166d615511591900dfebe))
+* **multi-step:** surface non-zero step exit codes; strengthen symlink test ([8aa2233](https://github.com/opendatahub-io/agent-eval-harness/commit/8aa2233cd97b08fb21af918cb5f5f7410f7621ba))
+
+
+### Features
+
+* **config:** multi-step execution.steps + per-step hooks + step-scoped judges ([8e94fa3](https://github.com/opendatahub-io/agent-eval-harness/commit/8e94fa389e40d0d098fea083f6d18252625381a4))
+* **execute:** sequential multi-step execution + per-step hooks ([a428f86](https://github.com/opendatahub-io/agent-eval-harness/commit/a428f86daf45c7f1503fca35d0e390a421f8b748))
+* **harbor:** generate multi-step [[steps]] task packages (schema 1.4) ([e8bd271](https://github.com/opendatahub-io/agent-eval-harness/commit/e8bd271348329854537f387e463b1af88826383e))
+* **score:** per-step judge scoping (JudgeConfig.step) ([6d2ce3f](https://github.com/opendatahub-io/agent-eval-harness/commit/6d2ce3f0af85210c741889f45d347b331154f389))
+
 # [1.32.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.31.0...v1.32.0) (2026-08-05)
 
 
