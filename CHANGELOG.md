@@ -1,3 +1,12 @@
+## [1.30.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.30.1...v1.30.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **harbor:** mark task.description truncation with an ellipsis ([2e0714f](https://github.com/opendatahub-io/agent-eval-harness/commit/2e0714f7d63f2f61ce4edb776454c85c2c2a4f19))
+* **harbor:** serialize all task.toml string fields, escape U+007F ([d6ee63c](https://github.com/opendatahub-io/agent-eval-harness/commit/d6ee63cb4c7d03e1f467b29ff3bbf8ae364a27d7)), closes [#148](https://github.com/opendatahub-io/agent-eval-harness/issues/148)
+* **harbor:** write generated task files as UTF-8 ([c720c35](https://github.com/opendatahub-io/agent-eval-harness/commit/c720c35f248dca9dfb3aaae4e145a99a9d87e13e))
+
 ## [1.30.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.30.0...v1.30.1) (2026-07-30)
 
 
