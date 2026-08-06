@@ -1,3 +1,13 @@
+## [1.35.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.35.0...v1.35.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* **report:** band reward-overview cells by score_range, drop (0,1) guess ([bfa6f15](https://github.com/opendatahub-io/agent-eval-harness/commit/bfa6f159ba2a3b677280de367591c5acb91ab427))
+* **report:** color per-case cells by score_range, not aggregate min_mean ([d014d1a](https://github.com/opendatahub-io/agent-eval-harness/commit/d014d1acfd1567431d9822fbba913dd42116a5f0))
+* **report:** use each judge's score_range for per-case histograms ([79d2681](https://github.com/opendatahub-io/agent-eval-harness/commit/79d268119d8358188a8534902cbec6fb5498d750))
+* **report:** validate score_range from raw config; cap histogram bins ([b515fdc](https://github.com/opendatahub-io/agent-eval-harness/commit/b515fdc383b85d2d96bf3008cb288722b331f2d9))
+
 # [1.35.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.34.0...v1.35.0) (2026-08-06)
 
 
