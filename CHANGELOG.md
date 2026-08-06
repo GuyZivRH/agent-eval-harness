@@ -1,3 +1,15 @@
+# [1.35.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.34.0...v1.35.0) (2026-08-06)
+
+
+### Bug Fixes
+
+* **runner:** validate permission_mode by type, not truthiness ([fa917f5](https://github.com/opendatahub-io/agent-eval-harness/commit/fa917f5113976c38ee60ca8fb73120f30a8aa269))
+
+
+### Features
+
+* **runner:** add runner.permission_mode for Claude Code ([3d8a479](https://github.com/opendatahub-io/agent-eval-harness/commit/3d8a479183dacdf4f7ba08cdbd522fa3aedb0dba))
+
 # [1.34.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.33.0...v1.34.0) (2026-08-05)
 
 
