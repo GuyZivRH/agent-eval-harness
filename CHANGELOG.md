@@ -1,3 +1,16 @@
+# [1.36.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.35.1...v1.36.0) (2026-08-07)
+
+
+### Bug Fixes
+
+* **report:** reject path traversal + symlinks in dataset case/input resolution ([2d378ad](https://github.com/opendatahub-io/agent-eval-harness/commit/2d378ad08b40065a92955e1ef26b0c256b0f80bd))
+
+
+### Features
+
+* **report:** rename default title to "Agent Eval Report" + make it configurable ([9a63db3](https://github.com/opendatahub-io/agent-eval-harness/commit/9a63db3a20ea2b2f0dbc038ccff400a22707883b))
+* **report:** scannable, diff-safe per-case Input/Output sections ([2b8c74d](https://github.com/opendatahub-io/agent-eval-harness/commit/2b8c74d3f351c649c04d2a1d1caeab46239cbf59))
+
 ## [1.35.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.35.0...v1.35.1) (2026-08-06)
 
 
