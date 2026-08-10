@@ -1,3 +1,20 @@
+# [1.37.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.36.0...v1.37.0) (2026-08-10)
+
+
+### Bug Fixes
+
+* address CodeRabbit review feedback ([2aef4d3](https://github.com/opendatahub-io/agent-eval-harness/commit/2aef4d375d6e1b146255e8ac7853b6cd9b3e837f))
+* address CodeRabbit round-2 feedback ([7ebb34d](https://github.com/opendatahub-io/agent-eval-harness/commit/7ebb34dc9ef2f81d0317a3dc64a18e0e06fc1656))
+* address re-review feedback from astefanutti ([82b4027](https://github.com/opendatahub-io/agent-eval-harness/commit/82b4027e5ed5d58ac9bd93c43c3dbfc82ef6189c))
+* **eval-check:** address CodeRabbit findings on the previous commit ([2baa972](https://github.com/opendatahub-io/agent-eval-harness/commit/2baa972514174a93201ddb9e6db965f89150b2ea))
+* **eval-check:** reduce reference-checker false positives ([a30a89e](https://github.com/opendatahub-io/agent-eval-harness/commit/a30a89eba79bab433f89bb548293295e23ea818f))
+
+
+### Features
+
+* add cross-component reference validation to eval-check ([d2899a2](https://github.com/opendatahub-io/agent-eval-harness/commit/d2899a21a50f0cea1b7de7ce903a840d73847da2))
+* add inline check syntax validation (ast.parse) ([520bcc1](https://github.com/opendatahub-io/agent-eval-harness/commit/520bcc18d5ee8f969c2e101596c31271a501d531))
+
 # [1.36.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.35.1...v1.36.0) (2026-08-07)
 
 
