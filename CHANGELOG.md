@@ -1,3 +1,11 @@
+## [1.37.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.1...v1.37.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* **deps:** report eval.yaml discovery failures instead of silently degrading ([bf26404](https://github.com/opendatahub-io/agent-eval-harness/commit/bf264040993ddbdeb93762b38cc7fcee8ded0207))
+* **deps:** resolve venv deps from every eval.yaml, not just the first ([52d8a28](https://github.com/opendatahub-io/agent-eval-harness/commit/52d8a28ab2fe075ea6ee283b74fe0a94de324fd4))
+
 ## [1.37.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.0...v1.37.1) (2026-08-11)
 
 
