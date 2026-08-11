@@ -1,3 +1,12 @@
+## [1.37.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.0...v1.37.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **eval-analyze:** drop phantom `events` var; cover validate_eval; tighten test ([c6358f5](https://github.com/opendatahub-io/agent-eval-harness/commit/c6358f55664fb3d653c56c5f071a61fba64114a2)), closes [#179](https://github.com/opendatahub-io/agent-eval-harness/issues/179)
+* resolve bootstrap venv via realpath; sync validate_eval Jinja vars ([1d3ac2b](https://github.com/opendatahub-io/agent-eval-harness/commit/1d3ac2b40c79a685ca86c37fe96905245447f472))
+* **tests:** replace vacuous bootstrap test with sys.path check ([fa2227f](https://github.com/opendatahub-io/agent-eval-harness/commit/fa2227f67b4be8b575441974ca24732584d3d0e0))
+
 # [1.37.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.36.0...v1.37.0) (2026-08-10)
 
 
