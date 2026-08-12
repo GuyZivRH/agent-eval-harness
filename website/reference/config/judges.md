@@ -342,7 +342,17 @@ The config fails fast rather than mid-run when:
 - two judges share a `name` (except `pairwise`);
 - `builtin` is combined with `check`, `prompt`, `prompt_file`, `module`, or `function`;
 - `builtin` or `arguments` have the wrong type (must be string / mapping);
-- `score_range` is not a two-element increasing numeric `[min, max]` list.
+- `score_range` is not a two-element increasing numeric `[min, max]` list;
+- `feedback_type: bool` is combined with a `score_range` — the verdict is
+  pass/fail, so the scale would be ignored;
+- `feedback_type: int` declares fractional bounds (use `feedback_type: float`);
+- a **builtin LLM** judge declares `feedback_type` or `score_range` — those
+  prompts state their own pass/fail contract, so the declaration would be
+  dropped. Builtin *Python* judges are unaffected: they may be numeric.
+
+A numeric LLM or agent judge that declares no `score_range` **warns** rather
+than failing: the model is asked for an unbounded score and nothing checks what
+it returns. Inline `check:` judges are exempt — they compute their own value.
 
 ## Related
 
