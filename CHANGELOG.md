@@ -1,3 +1,13 @@
+## [1.37.3](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.2...v1.37.3) (2026-08-12)
+
+
+### Bug Fixes
+
+* **anova:** make the missing-[anova]-extra error reachable and actionable ([018636e](https://github.com/opendatahub-io/agent-eval-harness/commit/018636e629418476764eba13909484d65426e641))
+* **anova:** point the install hint at .eval-venv, keep the missing module name ([ac704db](https://github.com/opendatahub-io/agent-eval-harness/commit/ac704db14e88085d8e53da191d0c6ff579261307))
+* **anova:** shell-quote the generated install command ([0360453](https://github.com/opendatahub-io/agent-eval-harness/commit/036045371bba72b82f78f5fdcec8f0d72a90c284))
+* **venv:** activate the venv in eval-anova/check/compare scripts ([be4ad8e](https://github.com/opendatahub-io/agent-eval-harness/commit/be4ad8ee66685888d7aecae10038149f13ed2bef))
+
 ## [1.37.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.1...v1.37.2) (2026-08-11)
 
 
