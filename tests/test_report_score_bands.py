@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "eval-run" / "scripts"))
 
-from report import _ascii_score_hist, _score_band_class
+from report import _ascii_score_hist, _judge_score_ranges, _score_band_class
 
 
 def test_bands_span_the_declared_scale():
@@ -37,3 +37,33 @@ def test_histogram_keeps_an_off_scale_value_visible():
 def test_histogram_unchanged_when_every_value_is_on_scale():
     glyph = _ascii_score_hist(1, [0, 1, 2], smin=0, smax=2)
     assert glyph.startswith("0 ") and glyph.endswith(" 2")
+
+
+def test_a_fractional_upper_bound_keeps_its_fraction():
+    """`int()` here read a [0, 2.5] scale as [0, 2] and banded a legitimate
+    2.4 as off-scale."""
+    ranges = _judge_score_ranges({"judges": [{"name": "j", "score_range": [0, 2.5]}]})
+    assert ranges["j"] == (0.0, 2.5)
+    assert _score_band_class(2.4, *ranges["j"]) != "fail"
+
+
+def test_a_range_that_truncates_to_a_point_survives():
+    """int() collapsed [1.2, 1.8] to (1, 1), which `lo < hi` then dropped —
+    the judge silently lost its scale instead of banding on it."""
+    ranges = _judge_score_ranges({"judges": [{"name": "j", "score_range": [1.2, 1.8]}]})
+    assert ranges["j"] == (1.2, 1.8)
+
+
+def test_malformed_ranges_are_still_dropped():
+    config = {"judges": [{"name": "rev", "score_range": [5, 1]},
+                         {"name": "txt", "score_range": ["a", "b"]},
+                         {"name": "one", "score_range": [1]},
+                         {"name": "nil"}]}
+    assert _judge_score_ranges(config) == {}
+
+
+def test_histogram_bins_widen_to_cover_a_fractional_bound():
+    """Bins are whole numbers; ceil keeps the top of a [0, 2.5] scale visible
+    where truncating to 2 would clip it."""
+    glyph = _ascii_score_hist(1, [0, 1, 2], smin=0, smax=2.5)
+    assert glyph.startswith("0 ") and glyph.endswith(" 3")

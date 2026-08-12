@@ -20,6 +20,7 @@ import base64
 import difflib
 import hashlib
 import json
+import math
 import os
 import platform
 import subprocess
@@ -2008,6 +2009,10 @@ def _ascii_score_hist(med, values, smin=None, smax=None):
         return ""
     lo = smin if smin is not None else min(numeric)
     hi = smax if smax is not None else max(numeric)
+    # Bins are whole numbers, so a fractional declared bound has to widen to
+    # the enclosing integers: ceil keeps a [0, 2.5] judge's top bin, where
+    # truncating to 2 would drop every reading above it off the chart.
+    lo, hi = math.floor(lo), math.ceil(hi)
     # Widen to cover values off the declared scale: `range(lo, hi + 1)` below
     # would otherwise drop them, hiding the very readings worth seeing.
     lo, hi = min(lo, min(numeric)), max(hi, max(numeric))
@@ -2030,13 +2035,17 @@ _MAX_HIST_BINS = 40  # safety cap: fall back to observed span for pathological r
 
 
 def _judge_score_ranges(config):
-    """Map judge name -> validated integer (lo, hi) from its `score_range`.
+    """Map judge name -> validated (lo, hi) from its `score_range`.
 
     report.py reads eval.yaml as raw dicts (bypassing EvalConfig validation),
-    so guard here: keep only well-formed ranges (exactly two int-coercible,
+    so guard here: keep only well-formed ranges (exactly two float-coercible,
     strictly increasing endpoints). Malformed ranges (non-numeric, reversed,
     wrong length) are dropped so downstream histograms/coloring fall back to a
     safe default instead of raising on range()/arithmetic.
+
+    Bounds keep their fractional part — `int()` here turned a `[0, 2.5]` scale
+    into `[0, 2]` and banded a legitimate 2.4 as off-scale. Only the histogram
+    needs whole numbers, and it derives its own bins.
     """
     ranges = {}
     for j in config.get("judges", []):
@@ -2045,7 +2054,7 @@ def _judge_score_ranges(config):
         if not isinstance(sr, list) or len(sr) != 2:
             continue
         try:
-            lo, hi = int(sr[0]), int(sr[1])
+            lo, hi = float(sr[0]), float(sr[1])
         except (TypeError, ValueError):
             continue
         if lo < hi:
