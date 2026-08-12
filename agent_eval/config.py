@@ -1112,6 +1112,44 @@ class EvalConfig:
                     f"Judge '{jc.name}': 'step: {jc.step}' does not match any "
                     f"execution step id ({sorted(step_ids)})")
 
+        # Scale coherence: a judge's declared scale has to agree with its
+        # feedback_type and with the scorer that will actually run it. Each of
+        # these used to be accepted and then quietly ignored at scoring time,
+        # which is how a judge shipped scoring on a scale nobody declared.
+        from agent_eval.judges import builtin_judge_kind, builtin_judge_names
+
+        for jc in config.judges:
+            builtin_kind = builtin_judge_kind(jc.builtin) if jc.builtin else None
+            if jc.builtin and builtin_kind is None:
+                raise ValueError(
+                    f"Judge '{jc.name}': unknown builtin judge '{jc.builtin}' "
+                    f"(available: {', '.join(builtin_judge_names())})")
+            if jc.feedback_type == "bool" and jc.score_range:
+                raise ValueError(
+                    f"Judge '{jc.name}': 'score_range' has no meaning with "
+                    "'feedback_type: bool' (the verdict is pass/fail) — "
+                    "drop one of the two")
+            if (jc.feedback_type == "int" and jc.score_range
+                    and any(float(b) != int(b) for b in jc.score_range)):
+                raise ValueError(
+                    f"Judge '{jc.name}': 'feedback_type: int' cannot express "
+                    f"the fractional 'score_range' {jc.score_range} — use "
+                    "'feedback_type: float'")
+            if (builtin_kind == "llm"
+                    and (jc.feedback_type not in ("", "bool") or jc.score_range)):
+                raise ValueError(
+                    f"Judge '{jc.name}': builtin LLM judge '{jc.builtin}' is "
+                    "always scored as pass/fail, so 'feedback_type'/"
+                    "'score_range' would be silently ignored")
+            if (jc.feedback_type in ("int", "float") and not jc.score_range
+                    and not jc.builtin
+                    and (jc.prompt or jc.prompt_file or jc.llm_rubric)):
+                import warnings
+                warnings.warn(
+                    f"Judge '{jc.name}': numeric judge has no 'score_range', "
+                    "so the model is asked for an unbounded score and nothing "
+                    "checks what it returns", stacklevel=2)
+
         # Reward composition
         if "reward" in raw:
             reward_raw = raw.get("reward")

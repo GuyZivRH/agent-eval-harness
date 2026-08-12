@@ -810,6 +810,10 @@ def _make_builtin_scorer(entry, jc, config):
             out = outputs or {}
             rendered = _render_jinja2_template(prompt_text, arguments, out)
             images = _extract_images(out)
+            # Builtin prompts state a pass/fail contract, so the verdict shape
+            # is theirs, not the judge config's. A config that declares
+            # `feedback_type`/`score_range` on one of these is rejected at load
+            # rather than having the declaration silently dropped here.
             return _call_structured_judge(rendered, judge_model, "bool",
                                           images=images)
 
