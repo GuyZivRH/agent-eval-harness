@@ -172,18 +172,23 @@ For **LLM judges** the shape is set by `feedback_type`:
 
 | `feedback_type` | Tool the judge is forced to call | Value |
 | --- | --- | --- |
-| *(omitted)* | `submit_score` | integer `1–5` (numeric) |
+| *(omitted)* / `int` | `submit_score` | integer on `score_range` (default `1–5`) |
+| `float` | `submit_score` | number on `score_range` |
 | `bool` | `submit_evaluation` | `passed` (boolean) |
 
 Builtin `.md` LLM judges are always boolean. Inline `check` and external judges decide
 their own return type — the aggregator infers boolean vs numeric from the values it
 actually sees across cases.
 
-!!! note "Numeric range and the report"
-    `score_range: [min, max]` sets the scale used to colour report cells (and available
-    to any consumer that normalizes the value). If omitted, LLM judges default to
-    `[1, 5]` and other numeric judges to `[0, 1]`. This is independent of
-    `reward.score_range` — see the [reward API](reward-api.md).
+!!! note "Numeric range: declared vs. assumed"
+    `score_range: [min, max]` is the judge's scale. When **declared**, it is stated in the
+    LLM judge's system prompt and tool schema, colours report cells, normalizes the judge
+    in the default reward composition, and is enforced — a value off the scale is recorded
+    as an error sample rather than counted. When **omitted**, LLM judges are told `[1, 5]`
+    and other numeric judges are banded on `[0, 1]`, but nothing is enforced, so an inline
+    `check` returning a raw count keeps returning it. Declare the range whenever the rubric
+    grades on something other than 1–5. This is independent of `reward.score_range` — see
+    the [reward API](reward-api.md).
 
 ## Aggregation: `pass_rate` vs `mean`
 

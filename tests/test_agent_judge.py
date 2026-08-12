@@ -169,12 +169,15 @@ class TestVerdictParsing:
         (val, rat), _ = self._run(judge, {"score": 3.5, "rationale": "ok"})
         assert val == 3.5
 
-    def test_score_range_clamps(self):
+    def test_score_range_not_clamped_here(self):
+        """Range enforcement moved to `_enforce_bounds` in score_cases, so an
+        agent judge that ignores its scale warns like an LLM judge instead of
+        being silently clamped at the point of parsing."""
         judge = _agent_judge(feedback_type="int", score_range=[0, 2])
         (val, _), _ = self._run(judge, {"score": 9, "rationale": "over"})
-        assert val == 2
+        assert val == 9
         (val2, _), _ = self._run(judge, {"score": -4, "rationale": "under"})
-        assert val2 == 0
+        assert val2 == -4
 
     def test_bool_from_score_json(self):
         judge = _agent_judge(feedback_type="bool")

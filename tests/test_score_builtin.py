@@ -173,10 +173,11 @@ class TestParsers:
         assert score == 4
 
     def test_parse_score_unparseable(self):
+        # A response with no on-scale score raises rather than defaulting to a
+        # made-up 3 that would count toward the judge's mean (issue #182).
         from score import _parse_score_response
-        score, rationale = _parse_score_response("no numbers here at all")
-        assert score == 3
-        assert "Could not parse" in rationale
+        with pytest.raises(ValueError, match="could not parse a score"):
+            _parse_score_response("no numbers here at all")
 
     def test_parse_score_prose_keeps_full_rationale(self):
         # Judge returned markdown prose instead of JSON: the score is still
@@ -468,3 +469,113 @@ class TestVendoringPattern:
         result = scorer(outputs={"cost_usd": 3.0})
         assert result[0] is True
         assert "$5.00" in result[1]
+
+
+class TestNumericBounds:
+    """A judge's declared `score_range` must reach the model and be enforced."""
+
+    def test_defaults_to_1_5_when_undeclared(self):
+        from score import _numeric_bounds
+        assert _numeric_bounds(JudgeConfig(name="j")) == (1, 5, True)
+
+    def test_declared_range_wins(self):
+        from score import _numeric_bounds
+        jc = JudgeConfig(name="j", feedback_type="int", score_range=[0.0, 2.0])
+        assert _numeric_bounds(jc) == (0.0, 2.0, True)
+
+    def test_float_feedback_type_is_not_int(self):
+        from score import _numeric_bounds
+        jc = JudgeConfig(name="j", feedback_type="float", score_range=[0.0, 1.0])
+        assert _numeric_bounds(jc) == (0.0, 1.0, False)
+
+    def test_bool_judge_has_no_bounds(self):
+        from score import _numeric_bounds
+        assert _numeric_bounds(JudgeConfig(name="j", feedback_type="bool")) is None
+
+    def test_bounds_render_without_trailing_zero(self):
+        # config coerces score_range to floats; "0.0-2.0" invites fractions.
+        from score import _score_system_prompt
+        assert "0-2" in _score_system_prompt((0.0, 2.0, True))
+
+
+class TestJudgeRequestPayload:
+    """The bug in #182 was in the REQUEST, which nothing asserted on."""
+
+    def _capture(self, bounds):
+        import score
+        resp = type("R", (), {"content": [type("B", (), {
+            "type": "tool_use", "name": "submit_score",
+            "input": {"score": 1, "rationale": "r"}})()]})()
+        with patch("score._get_anthropic_client") as mock_client:
+            create = mock_client.return_value.messages.create
+            create.return_value = resp
+            score._call_structured_judge("p", "m", "score", bounds=bounds)
+        return create.call_args.kwargs
+
+    def test_declared_range_reaches_system_prompt_and_schema(self):
+        kwargs = self._capture((0.0, 2.0, True))
+        assert "0-2" in kwargs["system"]
+        assert "1-5" not in kwargs["system"]
+        schema = kwargs["tools"][0]["input_schema"]["properties"]["score"]
+        assert (schema["minimum"], schema["maximum"]) == (0.0, 2.0)
+        assert schema["type"] == "integer"
+
+    def test_float_judge_gets_number_schema(self):
+        kwargs = self._capture((0.0, 1.0, False))
+        assert kwargs["tools"][0]["input_schema"]["properties"]["score"]["type"] == "number"
+
+    def test_undeclared_range_keeps_the_1_5_default(self):
+        kwargs = self._capture(None)
+        assert "1-5" in kwargs["system"]
+        schema = kwargs["tools"][0]["input_schema"]["properties"]["score"]
+        assert (schema["minimum"], schema["maximum"]) == (1, 5)
+
+
+class TestParseScoreResponseBounds:
+
+    def test_prose_fraction_uses_the_declared_top(self):
+        from score import _parse_score_response
+        val, _ = _parse_score_response("I give it 2/2 overall", (0, 2, True))
+        assert val == 2
+
+    def test_loose_scan_ignores_off_scale_numbers(self):
+        from score import _parse_score_response
+        # "4" is not on a 0-2 scale; "1" is.
+        val, _ = _parse_score_response("of the 4 criteria, quality is 1", (0, 2, True))
+        assert val == 1
+
+    def test_unparseable_raises_rather_than_inventing_a_score(self):
+        from score import _parse_score_response
+        with pytest.raises(ValueError) as exc:
+            _parse_score_response("no numbers here at all", (0, 2, True))
+        assert "[0, 2]" in str(exc.value)
+        assert "no numbers here at all" in str(exc.value)
+
+    def test_float_judge_keeps_the_decimal(self):
+        from score import _parse_score_response
+        val, _ = _parse_score_response('{"score": 0.75}', (0.0, 1.0, False))
+        assert val == 0.75
+
+
+class TestEnforceBounds:
+
+    def test_in_range_value_passes_through(self):
+        from score import _enforce_bounds
+        assert _enforce_bounds(2, (0, 2, True), "j") == 2
+
+    def test_above_range_raises_naming_the_judge_and_scale(self):
+        from score import ScoreRangeError, _enforce_bounds
+        with pytest.raises(ScoreRangeError) as exc:
+            _enforce_bounds(4, (0, 2, True), "testability_score")
+        assert "testability_score" in str(exc.value)
+        assert "[0, 2]" in str(exc.value)
+
+    def test_below_range_raises(self):
+        from score import ScoreRangeError, _enforce_bounds
+        with pytest.raises(ScoreRangeError):
+            _enforce_bounds(-1, (0, 2, True), "j")
+
+    def test_bools_and_undeclared_judges_are_untouched(self):
+        from score import _enforce_bounds
+        assert _enforce_bounds(True, (0, 2, True), "j") is True
+        assert _enforce_bounds(42, None, "j") == 42

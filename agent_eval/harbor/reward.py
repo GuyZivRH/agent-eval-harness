@@ -302,12 +302,19 @@ def compute_reward_from_config(per_judge: dict,
 def compose_reward(per_judge: dict, *,
                    score_min: float = _SCORE_MIN_DEFAULT,
                    score_max: float = _SCORE_MAX_DEFAULT,
+                   judge_ranges: Optional[dict] = None,
                    reward_cfg: Optional[RewardConfig] = None) -> tuple[float, dict]:
     """Collapse per-judge results into an overall reward + flat metric dict.
 
     Resolution order:
     1. If reward_cfg is provided (from eval.yaml reward: section), use it.
     2. Otherwise fall back to: boolean gates + average of normalized numerics.
+
+    In the fallback path each numeric judge is normalized over its OWN declared
+    ``score_range`` when ``judge_ranges`` supplies one, and over
+    ``score_min``/``score_max`` otherwise. Without this a 0-2 judge normalized
+    against the 1-5 default maps both 0 and 1 to 0.0 and its top score to 0.25,
+    silently collapsing most of the scale.
     """
     metrics = _extract_metrics(per_judge)
 
@@ -325,8 +332,10 @@ def compose_reward(per_judge: dict, *,
         if isinstance(value, bool) and not value:
             gate_ok = False
         elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            span = score_max - score_min
-            norm = (float(value) - score_min) / span if span else 0.0
+            declared = (judge_ranges or {}).get(name)
+            lo, hi = declared if declared else (score_min, score_max)
+            span = hi - lo
+            norm = (float(value) - lo) / span if span else 0.0
             normalized_scores.append(max(0.0, min(1.0, norm)))
 
     if not gate_ok:
@@ -336,6 +345,17 @@ def compose_reward(per_judge: dict, *,
     else:
         reward = 1.0
     return reward, metrics
+
+
+def judge_ranges(config) -> dict:
+    """Map judge name -> declared ``(lo, hi)`` from each judge's score_range.
+
+    Only judges that declare a range appear; the rest fall back to the default
+    scale. Feeds ``compose_reward``'s per-judge normalization.
+    """
+    return {j.name: (j.score_range[0], j.score_range[1])
+            for j in (getattr(config, "judges", None) or [])
+            if getattr(j, "score_range", None)}
 
 
 def build_reward(config: EvalConfig, case_dir: Path,
@@ -349,7 +369,8 @@ def build_reward(config: EvalConfig, case_dir: Path,
 
     reward_cfg = getattr(config, "reward", None)
 
-    reward, metrics = compose_reward(per_judge, reward_cfg=reward_cfg)
+    reward, metrics = compose_reward(per_judge, reward_cfg=reward_cfg,
+                                     judge_ranges=judge_ranges(config))
     return {"reward": reward, "metrics": metrics, "per_judge": per_judge}
 
 

@@ -198,6 +198,21 @@ The prompt is rendered with these variables:
     `{{ tool_trace }}`, `{{ evidence }}`, and `{{ reasoning }}` need `traces.events: true`;
     `{{ conversation }}` falls back to `stdout.log` when no events were captured.
 
+!!! tip "Grading on a scale other than 1–5"
+    Declare it: `score_range: [0, 2]`. The range is stated in the judge's system prompt,
+    set as `minimum`/`maximum` on the `submit_score` tool schema, and used to normalize the
+    judge in the default reward composition. Because a tool schema is *advisory* — the model
+    is not constrained by `minimum`/`maximum` — a returned value off the scale is recorded
+    as an **error sample** and left out of the judge's mean rather than clamped onto the
+    scale, where a 4 from a 0-2 judge would land as a perfect 2. With `samples: 3` the case
+    still reduces over the surviving samples, so one bad sample costs a stability flag. Keep
+    stating the scale in the rubric text as well; a prompt that says "score 0, 1, or 2" and
+    a config that says nothing is the combination that produced silently out-of-range scores
+    ([#182](https://github.com/opendatahub-io/agent-eval-harness/issues/182)).
+
+    Set `feedback_type: float` for a fractional scale; scores are otherwise rounded to
+    integers.
+
 LLM judges — including the agent judges below — are the only types that can be
 **sampled**. Set `samples: 3` to call the model several times per case and reduce the
 noise (median for scores, majority vote for booleans); the report flags cases where

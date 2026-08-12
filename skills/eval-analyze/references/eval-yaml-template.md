@@ -331,9 +331,14 @@ judges:
       <scoring criteria — define what each score level means>
     # score_range: [1, 5]             # optional; default LLM assumption is [1, 5].
     #                                 # Set explicitly for rubrics on a different
-    #                                 # scale (e.g. [1, 10], [0, 100]). The report
-    #                                 # uses it for per-cell color bands; reward
-    #                                 # composition still uses reward.score_range.
+    #                                 # scale (e.g. [0, 2], [1, 10], [0, 100]) — a
+    #                                 # DECLARED range is stated in the judge's
+    #                                 # prompt and tool schema, colors the report's
+    #                                 # per-cell bands, normalizes the judge in the
+    #                                 # default reward composition, and is enforced
+    #                                 # (an off-scale value becomes an error sample).
+    #                                 # The configured `reward:` section still
+    #                                 # normalizes through reward.score_range.
     # arguments:                      # optional, available as {{ arguments }} in prompt
     #   focus: completeness
     # context:                        # optional supplementary files

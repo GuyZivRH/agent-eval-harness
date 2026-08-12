@@ -496,3 +496,40 @@ def test_reward_formula_allows_list_for_mean():
                        score_range=[1, 5])
     r = reward_mod.compute_reward_from_config(per_judge, cfg)
     assert r == pytest.approx((1.0 + 0.5 + 0.0) / 3)
+
+
+def test_compose_reward_normalizes_over_each_judges_own_range():
+    """A 0-2 judge normalized against the 1-5 default collapses its scale:
+    0 and 1 both map to 0.0 and its top score to 0.25 (issue #182)."""
+    per_judge = {"testability": {"value": 2, "judge_type": "llm"}}
+    ranges = {"testability": (0.0, 2.0)}
+
+    naive, _ = reward_mod.compose_reward(per_judge)
+    assert naive == pytest.approx(0.25)
+
+    reward, _ = reward_mod.compose_reward(per_judge, judge_ranges=ranges)
+    assert reward == pytest.approx(1.0)
+
+    bottom, _ = reward_mod.compose_reward(
+        {"testability": {"value": 1, "judge_type": "llm"}}, judge_ranges=ranges)
+    assert bottom == pytest.approx(0.5)
+
+
+def test_compose_reward_undeclared_judges_keep_the_default_scale():
+    per_judge = {
+        "declared": {"value": 2, "judge_type": "llm"},
+        "undeclared": {"value": 3, "judge_type": "llm"},
+    }
+    reward, _ = reward_mod.compose_reward(
+        per_judge, judge_ranges={"declared": (0.0, 2.0)})
+    assert reward == pytest.approx(0.75)  # mean(1.0, 0.5)
+
+
+def test_judge_ranges_reads_declared_ranges_off_the_config():
+    from agent_eval.config import JudgeConfig
+
+    config = type("C", (), {"judges": [
+        JudgeConfig(name="scoped", score_range=[0.0, 2.0]),
+        JudgeConfig(name="plain"),
+    ]})()
+    assert reward_mod.judge_ranges(config) == {"scoped": (0.0, 2.0)}

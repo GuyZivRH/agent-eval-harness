@@ -329,7 +329,7 @@ thresholds:
   - **`inputs`** — which collected output dirs (by `outputs[].path` name) to stage as files; default: all of `outputs["files"]`. Use `[.]` to stage everything.
   - **`timeout`** — seconds (default: `execution.timeout` or harness default). **`max_budget_usd`** — per-judge-run cap (default `2.0`).
 
-  The judge writes its verdict to `./output/score.json` — `{"score": <number>, "rationale": "…"}` (numeric) or `{"passed": <bool>, "rationale": "…"}` (bool); `feedback_type` selects which, and `score_range` bands a numeric score. The harness appends this output contract (plus an untrusted-data guard) to the prompt automatically, so rubric authors write only the criteria. If `score.json` is absent, the harness falls back to parsing the last `{"score"|"passed", …}` JSON object from the run's stdout; if neither yields a value it records an error sample rather than silently passing. Example:
+  The judge writes its verdict to `./output/score.json` — `{"score": <number>, "rationale": "…"}` (numeric) or `{"passed": <bool>, "rationale": "…"}` (bool); `feedback_type` selects which, and `score_range` states the scale in the prompt, bands the score in the report, and records an off-scale verdict as an error sample rather than counting it. The harness appends this output contract (plus an untrusted-data guard) to the prompt automatically, so rubric authors write only the criteria. If `score.json` is absent, the harness falls back to parsing the last `{"score"|"passed", …}` JSON object from the run's stdout; if neither yields a value it records an error sample rather than silently passing. Example:
 
   ```yaml
   judges:

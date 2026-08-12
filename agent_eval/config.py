@@ -572,12 +572,15 @@ class JudgeConfig:
         default_factory=list
     )  # File paths loaded as supplementary context
     feedback_type: str = ""  # Optional: int, float, bool, str. Inferred if omitted.
-    # Numeric scale [lo, hi] for this judge's value. Used by the report to
-    # color per-cell bands proportionally, and can be honored by any consumer
-    # that needs to normalize this judge's raw value. If omitted, LLM judges
-    # default to [1, 5] and other numeric judges to [0, 1]. Set explicitly for
-    # judges on a non-default range (e.g. 1-10, 0-100). Independent of
-    # `reward.score_range`, which governs the reward composition normalization.
+    # Numeric scale [lo, hi] for this judge's value. When declared it is stated
+    # in the LLM judge's system prompt and tool schema, enforced on the returned
+    # value (an off-scale value is recorded as an error sample, not clamped),
+    # used by the report to color per-cell bands proportionally, and used to
+    # normalize this judge in the default reward composition. If omitted, LLM
+    # judges are told [1, 5] and nothing is enforced — an inline check returning
+    # a raw count keeps returning it. Set explicitly for judges on a non-default
+    # range (e.g. 0-2, 1-10, 0-100). Independent of `reward.score_range`, which
+    # governs the configured reward composition's normalization.
     score_range: Optional[list] = None
     model: str = ""  # Override model for this judge (pairwise, LLM)
     # External code judge

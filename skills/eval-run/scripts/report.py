@@ -2008,6 +2008,9 @@ def _ascii_score_hist(med, values, smin=None, smax=None):
         return ""
     lo = smin if smin is not None else min(numeric)
     hi = smax if smax is not None else max(numeric)
+    # Widen to cover values off the declared scale: `range(lo, hi + 1)` below
+    # would otherwise drop them, hiding the very readings worth seeing.
+    lo, hi = min(lo, min(numeric)), max(hi, max(numeric))
     if hi - lo > _MAX_HIST_BINS:   # pathological declared range -> use observed span
         lo, hi = min(numeric), max(numeric)
     counts = Counter(numeric)
@@ -2239,7 +2242,12 @@ def _score_band_class(val, lo, hi):
     scale — NOT against the aggregate `min_mean` threshold, which is a floor on
     the mean ACROSS cases and mis-flags valid per-case scores (e.g. a 1 on a
     0-2 judge with min_mean 1.5 would render red even though the judge passes).
+
+    A value OFF the scale is invalid, not excellent: without the guard below a
+    stray 4 from a 0-2 judge scores frac 2.0 and renders as a green pass.
     """
+    if val < lo or val > hi:
+        return "fail"
     span = hi - lo
     frac = (val - lo) / span if span else 0.5
     if frac >= 0.75:

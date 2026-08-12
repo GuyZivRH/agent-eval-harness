@@ -1,0 +1,84 @@
+"""End-to-end range enforcement in score_cases (issue #182).
+
+A judge that returns a value off its declared `score_range` is recorded as an
+error sample and drops out of the aggregate — clamping it would turn a 4 from a
+0-2 judge into a perfect 2. A judge that declares no range is left alone: an
+inline check returning a raw count must not be forced into the default [1, 5].
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import score as sc  # noqa: E402
+from agent_eval.config import EvalConfig  # noqa: E402
+
+
+def _config(tmp_path, judges_yaml):
+    p = tmp_path / "eval.yaml"
+    p.write_text(
+        f"name: t\nexecution: {{mode: case}}\n"
+        f"dataset: {{path: {tmp_path}/cases}}\njudges:\n{judges_yaml}")
+    return EvalConfig.from_yaml(p)
+
+
+def _case(tmp_path):
+    cd = tmp_path / "cases" / "case-1"
+    cd.mkdir(parents=True)
+    return cd
+
+
+def test_out_of_range_value_becomes_an_error_sample(tmp_path):
+    config = _config(tmp_path, "  - {name: testability, feedback_type: int, "
+                               "score_range: [0, 2], check: \"return (4, 'r')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    entry = result["per_case"]["case-1"]["testability"]
+    assert entry["value"] is None
+    assert "outside its declared score_range [0, 2]" in entry["error"]
+
+
+def test_out_of_range_value_is_excluded_from_the_aggregate(tmp_path):
+    config = _config(tmp_path, "  - {name: testability, feedback_type: int, "
+                               "score_range: [0, 2], check: \"return (4, 'r')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    assert result["aggregated"]["testability"]["values"] == []
+
+
+def test_in_range_value_is_kept(tmp_path):
+    config = _config(tmp_path, "  - {name: testability, feedback_type: int, "
+                               "score_range: [0, 2], check: \"return (1, 'r')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    entry = result["per_case"]["case-1"]["testability"]
+    assert entry["value"] == 1
+    assert "error" not in entry
+
+
+def test_judge_without_a_declared_range_is_untouched(tmp_path):
+    config = _config(tmp_path, "  - {name: attempts, check: \"return (7, 'r')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    entry = result["per_case"]["case-1"]["attempts"]
+    assert entry["value"] == 7
+    assert "error" not in entry
+
+
+def test_one_bad_sample_does_not_cost_the_case():
+    """A sampled judge (samples: 3) survives one off-scale sample.
+
+    The breach errors that sample only; the case still reduces to the median of
+    the survivors, so enforcement costs a stability flag rather than a value.
+    """
+    runs = [{"value": 1, "rationale": "a"},
+            {"value": 2, "rationale": "b"},
+            {"value": None, "error": "judge 'j' returned 4, outside [0, 2]"}]
+    agg = sc._aggregate_samples(runs, "llm")
+    assert agg["value"] == 1  # median_low of the two survivors
+    assert agg["stability"]["error_count"] == 1
+    assert agg["stability"]["stable"] is False
+
+
+def test_boolean_judge_is_untouched(tmp_path):
+    config = _config(tmp_path, "  - {name: files_exist, feedback_type: bool, "
+                               "check: \"return (True, 'r')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    assert result["per_case"]["case-1"]["files_exist"]["value"] is True
