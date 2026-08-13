@@ -79,6 +79,8 @@ judges:
 
   - name: output_quality
     description: Quality of the output versus the reference.
+    feedback_type: int
+    score_range: [1, 5]     # declare the scale — omitting it warns at config load
     prompt: |
       Compare the generated output against the reference.
 

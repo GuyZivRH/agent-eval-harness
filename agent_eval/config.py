@@ -571,7 +571,11 @@ class JudgeConfig:
     context: list = field(
         default_factory=list
     )  # File paths loaded as supplementary context
-    feedback_type: str = ""  # Optional: int, float, bool, str. Inferred if omitted.
+    # Optional verdict shape: "bool" (pass/fail) vs "int"/"float" (numeric
+    # score). Never inferred — an omitted value means numeric, and int-vs-float
+    # is then read off `score_range` (whole bounds => integer). "str" and
+    # "Literal[...]" apply only on the MLflow make_judge fallback path.
+    feedback_type: str = ""
     # Numeric scale [lo, hi] for this judge's value. When declared it is stated
     # in the LLM judge's system prompt and tool schema, enforced on the returned
     # value (an off-scale value is recorded as an error sample, not clamped),

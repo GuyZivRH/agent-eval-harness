@@ -250,6 +250,7 @@ See [the execution model](../concepts/execution-model.md) for the difference.
     judges:
       - name: output_quality
         prompt: "Score the output 1-5 for completeness and accuracy."
+        score_range: [1, 5]   # declare the scale — omitting it warns at config load
     ```
 
 === "Prompt mode"
@@ -330,6 +331,7 @@ judges:
 
   - name: output_quality
     prompt: "Score 1-5 vs the reference for completeness, clarity, accuracy."
+    score_range: [1, 5]     # declare the scale — omitting it warns at config load
 
 thresholds:
   has_content: { min_pass_rate: 1.0 }

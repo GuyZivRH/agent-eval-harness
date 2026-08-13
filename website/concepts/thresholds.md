@@ -23,7 +23,7 @@ key you use must match the **value type the judge produces**.
 | Key | Judge type | Metric compared | Value range |
 | --- | --- | --- | --- |
 | `min_pass_rate` | Boolean (`return True/False`, `feedback_type: bool`) | Fraction of cases that passed | `0.0`–`1.0` |
-| `min_mean` | Numeric (score `1`–`5`) | Mean score across cases | matches the score scale |
+| `min_mean` | Numeric (a score on the judge's `score_range`) | Mean score across cases | matches the score scale |
 | `min_win_rate` | [Pairwise](pairwise-and-sampling.md) | Win rate vs. a baseline run | `0.0`–`1.0` |
 
 !!! note "How aggregates are derived"
@@ -43,9 +43,10 @@ that is *not* silently ignored.
 
 !!! warning "A missing metric is reported AS a regression"
     When a configured threshold's metric is `None` (the judge was skipped for all cases,
-    or the key targets the wrong judge type), the harness records it as a regression with
-    an `n/a` value rather than skipping it. The rationale: a threshold you asked for but
-    that can never evaluate is a mistake worth surfacing, not hiding.
+    it **errored** on all of them, or the key targets the wrong judge type), the harness
+    records it as a regression with an `n/a` value rather than skipping it. The rationale:
+    a threshold you asked for but that can never evaluate is a mistake worth surfacing,
+    not hiding.
 
     ```text
     REGRESSIONS: 1 detected
@@ -53,8 +54,17 @@ that is *not* silently ignored.
     ```
 
     The detail explains why, e.g. *"pass_rate unavailable — judge skipped for all cases
-    or not a boolean judge"*. Fix it by switching to `min_mean` for the numeric judge (or
-    by ensuring the judge isn't `if`-skipped for every case).
+    or not a boolean judge"* — it says *skipped* even when the real cause was an error on
+    every case (every returned value rejected by its `score_range`, say). Fix it by
+    switching to `min_mean` for the numeric judge (or by ensuring the judge isn't
+    `if`-skipped for every case).
+
+!!! warning "Partial errors silently shrink the sample"
+    A judge that errors on *some* cases still produces a `mean` — over the survivors only.
+    Two off-scale cases out of ten leave `min_mean` gating the remaining eight, and the run
+    still exits `0`. The report shows `ERROR` for the judge only when *no* case produced a
+    value; short of that, check the per-case rationales (an errored cell reads
+    `ERROR: …`) before trusting a mean.
 
 !!! tip "Unknown keys and unknown judges are silently ignored"
     Thresholds are stored as-is at config load — there is no key-name validation. A typo

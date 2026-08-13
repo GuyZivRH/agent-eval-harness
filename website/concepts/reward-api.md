@@ -50,7 +50,7 @@ config fails to load if you combine them.
     | `false` *(default)* | Use the value directly, clamped to `[0, 1]`. |
     | `true` | Map the value from `score_range` to `[0, 1]` first. |
 
-    A missing or skipped judge (value `None`) scores `0.0`.
+    A missing, skipped, or errored judge (value `None`) scores `0.0`.
 
 === "Formula mode"
 
@@ -110,14 +110,17 @@ config fails to load if you combine them.
 
 ## Value normalization
 
-Each judge value is turned into a `[0, 1]` float before composition:
+Each judge value is turned into a `[0, 1]` float before composition. This table
+describes the `reward:`-block path; in the default composition (no `reward:`
+block) booleans are **gates only** — a `true` contributes nothing to the average
+— and each numeric judge is normalized over its own `score_range`:
 
 | Judge value | Reward contribution |
 | --- | --- |
 | boolean `true` / `false` | `1.0` / `0.0` |
 | numeric, name in `raw` | clamped to `[0, 1]` as-is |
 | numeric, otherwise | `(v - lo) / (hi - lo)`, clamped, using `score_range` |
-| `None` (missing/skipped) | ignored (or `0.0` in single-judge mode) |
+| `None` — `if:`-skipped **or** errored (e.g. off its `score_range`) | `weighted`: dropped, and the remaining weights renormalize (the reward can go *up*). Expression: the name is **unbound**, the formula raises and the reward degrades to `0.0` with a warning on stderr. Single-judge: `0.0`. No `reward:` block: ignored if skipped, but a trial where *nothing* scored because a judge errored is `0.0`. |
 
 ## Gate semantics and the double-gating gotcha
 
@@ -144,9 +147,13 @@ hard structural gate: it fires before the formula runs.
 1. **`reward:` section present** — use it. `judge` mode if `judge` is set,
    otherwise the `formula`/`weights` composition.
 2. **No `reward:` block (the default)** — boolean judges gate (any `false` →
-   `0.0`); numeric judges are normalized (`score_min`/`score_max` default
-   `1.0`/`5.0`) and averaged. If nothing failed and there are no numeric
-   judges, the reward is `1.0`.
+   `0.0`); each numeric judge is normalized over its own declared `score_range`
+   (falling back to `score_min`/`score_max`, default `1.0`/`5.0`) and the
+   results are averaged. If nothing scored because every scoring judge
+   **errored** — including a value rejected by its `score_range` — the reward is
+   `0.0`; `1.0` is reserved for the gates-only case where every gate passed and
+   there was nothing numeric to average (a judge skipped by its `if:` condition
+   is not an error).
 
 ```python title="default composition (compose_reward)"
 # boolean judges gate, numeric judges normalized to [0,1] and averaged
@@ -154,7 +161,9 @@ if not gate_ok:
     reward = 0.0
 elif normalized_scores:
     reward = sum(normalized_scores) / len(normalized_scores)
-else:
+elif failed:            # every scoring judge errored -> unscored, not perfect
+    reward = 0.0
+else:                   # gates-only config: every gate passed
     reward = 1.0
 ```
 

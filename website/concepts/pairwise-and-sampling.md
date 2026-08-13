@@ -127,6 +127,8 @@ recording the spread so you can tell signal from noise.
 judges:
   - name: output_quality
     prompt: "Score the output 1-5 for completeness and accuracy."
+    feedback_type: int
+    score_range: [1, 5] # declare the scale — omitting it warns at config load
     samples: 5          # run 5×/case, reduce to a stable score
 ```
 
