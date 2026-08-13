@@ -352,8 +352,9 @@ The config fails fast rather than mid-run when:
   may be numeric.
 
 A numeric LLM or agent judge that declares no `score_range` **warns** rather
-than failing: the model is asked for an unbounded score and nothing checks what
-it returns. Only that warning exempts inline `check:` judges — they compute
+than failing: it is scored on the unenforced `[1, 5]` default — the model is
+still told that scale, but the value it returns is not checked. Only that
+warning exempts inline `check:` judges — they compute
 their own value, so there is no model to bound.
 
 A declared `score_range` **is** enforced for every judge type, inline `check:`,

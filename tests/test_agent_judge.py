@@ -619,11 +619,25 @@ class TestAgentJudgeHardening:
                 _drop_model_calling_judges(judges, config)
 
 
-def test_agent_verdict_contract_states_the_default_scale():
-    """An agent judge with no declared range was told '{"score": <number>}' —
-    no scale at all — while the LLM path scores the same judge on [1, 5].
-    Both contracts now come from `_numeric_bounds`."""
-    import score
-    jc = JudgeConfig(name="j", prompt="rate it",
-                     agent={"allowed_tools": ["Read"]})
-    assert score._numeric_bounds(jc) == (1, 5, True)
+class TestVerdictContractScale:
+    """The contract handed to the agent must state the same scale the LLM path
+    uses — it was hand-rolled from `jc.score_range` and had already drifted."""
+
+    def _args(self, **judge_kwargs):
+        cap = {}
+        judge = _agent_judge(**judge_kwargs)
+        TestRunnerIsolation()._load_and_run(judge, {"score": 1, "rationale": "x"}, cap)
+        return cap["execute_calls"][0]["args"]
+
+    def test_a_judge_with_no_declared_range_is_still_given_one(self):
+        # Was '{"score": <number>}' — no scale at all — while `_numeric_bounds`
+        # scores that same judge on [1, 5].
+        assert "in [1, 5]" in self._args()
+
+    def test_a_declared_range_reaches_the_contract(self):
+        assert "integer in [0, 2]" in self._args(feedback_type="int",
+                                                 score_range=[0, 2])
+
+    def test_a_fractional_range_asks_for_a_number(self):
+        args = self._args(score_range=[0, 2.5])
+        assert "number in [0, 2.5]" in args and "integer in" not in args

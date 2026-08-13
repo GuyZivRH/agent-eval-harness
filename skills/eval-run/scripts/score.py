@@ -1111,10 +1111,12 @@ def _parse_score_response(text, bounds=None):
     if bounds is None:
         bounds = (_DEFAULT_SCORE_RANGE[0], _DEFAULT_SCORE_RANGE[1], True)
     lo, hi, is_int = bounds
-    # An unsigned pattern on a scale that goes below zero reads "-1" as 1 and
-    # silently inverts the verdict — and `_enforce_bounds` cannot catch it,
-    # because the flipped value is in range.
-    num = r'-?\d+(?:\.\d+)?' if lo < 0 else r'\d+(?:\.\d+)?'
+    # Signed on every scale. Unsigned, a "-1" reads as 1: on a [-1, 1] judge
+    # that inverts the verdict with `_enforce_bounds` none the wiser, since the
+    # flipped value is in range; on a [0, 2] judge it invents an in-range score
+    # from an off-scale one. Signed, the first is read correctly and the second
+    # is rejected.
+    num = r'-?\d+(?:\.\d+)?'
     # 1. Clean JSON object (handles escapes, newlines, embedded quotes).
     obj = _loads_json_object(text)
     if isinstance(obj, dict) and obj.get("score") is not None:
@@ -1278,8 +1280,12 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
                         }
                         continue
                 except Exception as e:
+                    # An `error` key, not just a rationale: a condition that
+                    # blew up is a failure, and reward composition must not
+                    # mistake it for a judge that was meant to be skipped.
                     case_results[name] = {
                         "value": None,
+                        "error": f"Condition error: {e}",
                         "rationale": f"Condition error: {e}",
                         "judge_type": judge_type,
                     }

@@ -1151,8 +1151,9 @@ class EvalConfig:
                 import warnings
                 warnings.warn(
                     f"Judge '{jc.name}': numeric judge has no 'score_range', "
-                    "so the model is asked for an unbounded score and nothing "
-                    "checks what it returns", stacklevel=2)
+                    "so it is scored on the unenforced [1, 5] default — "
+                    "declare one to have the returned value checked",
+                    stacklevel=2)
 
         # Reward composition
         if "reward" in raw:

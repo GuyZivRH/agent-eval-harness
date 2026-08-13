@@ -2027,7 +2027,9 @@ def _ascii_score_hist(med, values, smin=None, smax=None):
     # A fractional reading bins to the integer at or above it, so an off-scale
     # 2.9 lands in the 3 bin rather than masquerading as a 2.
     counts = Counter(math.ceil(v) for v in raw)
-    med = max(lo, min(hi, int(med)))
+    # Bin the marker the same way the counts are binned, or it lands on an
+    # empty cell for any fractional median.
+    med = max(lo, min(hi, math.ceil(med)))
     items = [(s, counts.get(s, 0)) for s in range(lo, hi + 1)]
     return _ascii_hist(items, str(lo), str(hi), med)
 

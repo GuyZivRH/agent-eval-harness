@@ -666,12 +666,16 @@ class TestSignedScale:
         from score import _parse_score_response
         assert _parse_score_response("Overall score: 1", self.BOUNDS)[0] == 1
 
-    def test_an_unsigned_scale_still_ignores_a_stray_minus(self):
+    def test_an_unsigned_scale_reads_a_minus_as_off_scale(self):
+        """A "-1" on a [0, 2] judge is off-scale, not a 1. Unsigned patterns
+        read it as 1 and invented an in-range score from an invalid one."""
         from score import _parse_score_response
-        # On [0, 2] a "-1" is off-scale, not a 1.
-        val, _ = _parse_score_response("worth about -1, call it 2",
-                                       (0.0, 2.0, True))
-        assert val == 2
+        with pytest.raises(ValueError):
+            _parse_score_response("the answer is -1", (0.0, 2.0, True))
+
+    def test_a_hyphen_inside_a_token_is_not_a_sign(self):
+        from score import _parse_score_response
+        assert _parse_score_response("case x-1 scored 2", (0.0, 2.0, True))[0] == 2
 
     def test_the_prompt_spells_out_a_signed_range(self):
         from score import _score_system_prompt

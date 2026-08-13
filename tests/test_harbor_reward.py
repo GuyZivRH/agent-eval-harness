@@ -576,3 +576,14 @@ class TestUnscoredTrials:
                            "rationale": "Skipped: condition 'x' is false"}}
         reward, _ = reward_mod.compose_reward(per_judge)
         assert reward == 1.0
+
+
+def test_a_broken_if_condition_is_not_a_skip():
+    """`score_cases` records a condition that raised as value None. Without an
+    `error` key it read as a deliberate skip, so a typo'd `if:` on the only
+    scoring judge still collected the gates-only 1.0."""
+    per_judge = {"g": {"value": True},
+                 "q": {"value": None, "error": "Condition error: NameError",
+                       "rationale": "Condition error: NameError"}}
+    reward, _ = reward_mod.compose_reward(per_judge)
+    assert reward == 0.0
