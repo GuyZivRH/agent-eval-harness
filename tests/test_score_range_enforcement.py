@@ -82,3 +82,19 @@ def test_boolean_judge_is_untouched(tmp_path):
                                "check: \"return (True, 'r')\"}\n")
     result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
     assert result["per_case"]["case-1"]["files_exist"]["value"] is True
+
+
+def test_a_deterministic_judge_keeps_its_own_fractional_value(tmp_path):
+    """Declaring a `score_range` asks for validation and report bands, not for
+    the judge's arithmetic to be rounded.
+
+    `_enforce_bounds` used to end in `_coerce_number`, and `is_int` is true for
+    any `feedback_type` other than "float" — including the unset default — so a
+    `check:` judge returning 0.75 on a [0, 1] scale was recorded as 1.
+    """
+    config = _config(tmp_path, "  - {name: ratio, score_range: [0, 1], "
+                               "check: \"return (0.75, 'r')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    entry = result["per_case"]["case-1"]["ratio"]
+    assert entry["value"] == 0.75
+    assert entry.get("error") is None

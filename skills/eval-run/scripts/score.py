@@ -928,15 +928,22 @@ def _enforce_bounds(value, bounds, judge_name):
     mean and bands green. A judge that ignored its scale has not produced a
     usable number, so the sample is recorded as an error and drops out of the
     aggregate rather than being imputed.
+
+    Validates only. An in-range value is returned untouched: rounding belongs
+    to the paths that turn a *model's* answer into a number
+    (`_call_structured_judge`, `_parse_score_response`,
+    `_interpret_agent_verdict`), which already do it. A deterministic judge
+    computed its own value and declaring a `score_range` to get report bands
+    must not silently rewrite it.
     """
     if bounds is None or isinstance(value, bool) or not isinstance(value, (int, float)):
         return value
-    lo, hi, is_int = bounds
+    lo, hi, _ = bounds
     if value < lo or value > hi:
         raise ScoreRangeError(
             f"judge '{judge_name}' returned {value}, outside its declared "
             f"score_range [{_fmt_bound(lo)}, {_fmt_bound(hi)}]")
-    return _coerce_number(value, is_int)
+    return value
 
 
 def _log_judge_error(case_id, exc):
