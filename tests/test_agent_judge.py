@@ -164,10 +164,19 @@ class TestVerdictParsing:
         assert isinstance(val, int)
         assert rat == "all claims verified"
 
-    def test_numeric_float_preserved_without_int_type(self):
-        judge = _agent_judge(score_range=[0, 5])
+    def test_numeric_float_preserved_on_a_fractional_scale(self):
+        """A float survives without an explicit `feedback_type: float` — but
+        the scale has to be continuous. On a whole-numbered scale the agent is
+        told "integer", so a fractional answer is rounded to it (below), the
+        same as the LLM path does for the identical judge config."""
+        judge = _agent_judge(score_range=[0, 5.5])
         (val, rat), _ = self._run(judge, {"score": 3.5, "rationale": "ok"})
         assert val == 3.5
+
+    def test_a_whole_scale_rounds_the_agent_verdict(self):
+        judge = _agent_judge(score_range=[0, 5])
+        (val, rat), _ = self._run(judge, {"score": 3.5, "rationale": "ok"})
+        assert val == 4
 
     def test_score_range_not_clamped_here(self):
         """Range enforcement moved to `_enforce_bounds` in score_cases, so an

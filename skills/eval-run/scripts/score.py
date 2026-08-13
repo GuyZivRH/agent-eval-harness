@@ -1517,12 +1517,14 @@ def _interpret_agent_verdict(obj, is_bool, jc):
     else:
         raise RuntimeError(
             f"Agent judge '{jc.name}': verdict missing 'score'")
-    # Rounds on an explicit `feedback_type: int` only. Note this is looser than
-    # the verdict contract the agent was handed, which says "integer" for any
-    # whole-numbered scale: a judge told "integer in [0, 5]" that answers 3.5
-    # keeps the 3.5. Pre-existing (see `test_numeric_float_preserved_without_
-    # int_type`) and left alone here.
-    if jc.feedback_type == "int":
+    # Round on the rule the agent was actually given. `_numeric_bounds` decides
+    # integer-ness for the verdict contract, the LLM tool schema and the report
+    # alike, so keying this off `feedback_type: int` alone made the same judge
+    # config produce a different type depending on which runner scored it: told
+    # "integer in [0, 5]" and answering 3.5, the LLM path recorded 4 and the
+    # agent path 3.5.
+    bounds = _numeric_bounds(jc)
+    if bounds is not None and bounds[2]:
         value = int(round(value))
     return value, rationale or "agent judge verdict"
 
