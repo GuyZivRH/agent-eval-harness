@@ -92,11 +92,21 @@ config fails to load if you combine them.
 | `gate` | bool | `true` (formula) / `false` (judge) | Any boolean judge returning `false` zeros the reward. |
 
 !!! tip "`score_range` on the judge vs. on the reward"
-    Without a `reward:` block, each numeric judge is normalized over its **own**
-    declared `score_range`, falling back to `[1, 5]` when it declares none.
-    A `reward:` block overrides that: `reward.score_range` then applies to every
-    numeric judge it composes, so set it to match your rubric when your judges
-    are not on the default scale.
+    **Without a `reward:` block**, each numeric judge is normalized over its
+    **own** declared `score_range`, falling back to `[1, 5]` when it declares
+    none.
+
+    **With a `reward:` block**, per-judge ranges are not consulted — the
+    judge's own `score_range` still bands its report cells, but composition
+    uses `reward.score_range`. Two exceptions:
+
+    - in `formula` mode, judges listed in `raw` are already in `[0, 1]` and
+      skip normalization entirely;
+    - in single-judge mode, `reward.score_range` applies only when
+      `normalize: true`; otherwise the value is clamped to `[0, 1]` as-is.
+
+    So set `reward.score_range` to match your rubric whenever your composed
+    judges are not on the default scale.
 
 ## Value normalization
 
