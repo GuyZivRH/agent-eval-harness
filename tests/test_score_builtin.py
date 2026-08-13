@@ -649,3 +649,30 @@ class TestLLMJudgeWiring:
     def test_a_float_judge_asks_for_a_number(self):
         kwargs = self._request(feedback_type="float", score_range=[0, 1])
         assert kwargs["tools"][0]["input_schema"]["properties"]["score"]["type"] == "number"
+
+
+class TestSignedScale:
+    """A preference judge on [-1, 1] must not have its verdict inverted."""
+
+    BOUNDS = (-1.0, 1.0, True)
+
+    def test_prose_negative_scores_keep_their_sign(self):
+        from score import _parse_score_response
+        for text in ("Overall score: -1", "score = -1", "The result is -1"):
+            val, _ = _parse_score_response(text, self.BOUNDS)
+            assert val == -1, text
+
+    def test_positive_scores_are_unaffected(self):
+        from score import _parse_score_response
+        assert _parse_score_response("Overall score: 1", self.BOUNDS)[0] == 1
+
+    def test_an_unsigned_scale_still_ignores_a_stray_minus(self):
+        from score import _parse_score_response
+        # On [0, 2] a "-1" is off-scale, not a 1.
+        val, _ = _parse_score_response("worth about -1, call it 2",
+                                       (0.0, 2.0, True))
+        assert val == 2
+
+    def test_the_prompt_spells_out_a_signed_range(self):
+        from score import _score_system_prompt
+        assert "from -1 to 1" in _score_system_prompt(self.BOUNDS)

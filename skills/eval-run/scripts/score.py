@@ -895,8 +895,11 @@ def _coerce_number(value, is_int):
 def _score_system_prompt(bounds):
     lo, hi, is_int = bounds
     kind = "an integer" if is_int else "a numeric"
+    # "-1-1" for a [-1, 1] scale is unreadable; spell those out.
+    span = (f"from {_fmt_bound(lo)} to {_fmt_bound(hi)}" if lo < 0
+            else f"{_fmt_bound(lo)}-{_fmt_bound(hi)}")
     return ("You are a judge evaluating skill outputs. Call the submit_score "
-            f"tool once with {kind} score {_fmt_bound(lo)}-{_fmt_bound(hi)} "
+            f"tool once with {kind} score {span} "
             "and a thorough rationale.")
 
 
@@ -1108,7 +1111,10 @@ def _parse_score_response(text, bounds=None):
     if bounds is None:
         bounds = (_DEFAULT_SCORE_RANGE[0], _DEFAULT_SCORE_RANGE[1], True)
     lo, hi, is_int = bounds
-    num = r'\d+(?:\.\d+)?'
+    # An unsigned pattern on a scale that goes below zero reads "-1" as 1 and
+    # silently inverts the verdict — and `_enforce_bounds` cannot catch it,
+    # because the flipped value is in range.
+    num = r'-?\d+(?:\.\d+)?' if lo < 0 else r'\d+(?:\.\d+)?'
     # 1. Clean JSON object (handles escapes, newlines, embedded quotes).
     obj = _loads_json_object(text)
     if isinstance(obj, dict) and obj.get("score") is not None:
@@ -1133,7 +1139,10 @@ def _parse_score_response(text, bounds=None):
         return (_coerce_number(next(g for g in explicit.groups() if g), is_int),
                 text.strip())
     # 4. Last resort: the final number in the response that is ON the scale.
-    on_scale = [n for n in re.findall(rf'\b{num}\b', text) if lo <= float(n) <= hi]
+    # `\b` cannot open a signed number — space to "-" is not a word boundary —
+    # so anchor on "not preceded by a word char or a dot" instead.
+    on_scale = [n for n in re.findall(rf'(?<![\w.]){num}\b', text)
+                if lo <= float(n) <= hi]
     if on_scale:
         return (_coerce_number(on_scale[-1], is_int), text.strip())
     # Nothing parseable. Raise so the sample is recorded as an error, matching
