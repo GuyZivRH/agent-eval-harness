@@ -1499,6 +1499,11 @@ def _interpret_agent_verdict(obj, is_bool, jc):
     else:
         raise RuntimeError(
             f"Agent judge '{jc.name}': verdict missing 'score'")
+    # Rounds on an explicit `feedback_type: int` only. Note this is looser than
+    # the verdict contract the agent was handed, which says "integer" for any
+    # whole-numbered scale: a judge told "integer in [0, 5]" that answers 3.5
+    # keeps the 3.5. Pre-existing (see `test_numeric_float_preserved_without_
+    # int_type`) and left alone here.
     if jc.feedback_type == "int":
         value = int(round(value))
     return value, rationale or "agent judge verdict"
@@ -1646,17 +1651,20 @@ def _load_agent_judge(jc, config, project_root=None):
     arguments = jc.arguments
 
     # --- Output-contract note appended to every rendered prompt ---
-    if is_bool:
+    # Built from the same `_numeric_bounds` the LLM path uses, so the two agree
+    # on the scale and on integer-ness. Hand-rolling it here had already
+    # drifted: a judge with no declared range was told nothing at all
+    # ('{"score": <number>}'), while `_numeric_bounds` scores it on [1, 5].
+    bounds = _numeric_bounds(jc)
+    if is_bool or bounds is None:
         verdict_spec = ('{"passed": <true|false>, '
                         '"rationale": "<short justification>"}')
-    elif jc.score_range:
+    else:
+        lo, hi, is_int = bounds
         verdict_spec = ('{"score": <%s in [%s, %s]>, '
                         '"rationale": "<short justification>"}'
-                        % ("integer" if jc.feedback_type != "float" else "number",
-                           _fmt_bound(jc.score_range[0]),
-                           _fmt_bound(jc.score_range[1])))
-    else:
-        verdict_spec = '{"score": <number>, "rationale": "<short justification>"}'
+                        % ("integer" if is_int else "number",
+                           _fmt_bound(lo), _fmt_bound(hi)))
     contract = _AGENT_JUDGE_CONTRACT.format(verdict_spec=verdict_spec)
 
     def scorer(outputs=None, **kwargs):

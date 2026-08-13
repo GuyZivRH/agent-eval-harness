@@ -617,3 +617,13 @@ class TestAgentJudgeHardening:
         with patch("agent_eval.judges.BuiltinJudgeRegistry", side_effect=RuntimeError("boom")):
             with pytest.raises(RuntimeError, match="cannot classify"):
                 _drop_model_calling_judges(judges, config)
+
+
+def test_agent_verdict_contract_states_the_default_scale():
+    """An agent judge with no declared range was told '{"score": <number>}' —
+    no scale at all — while the LLM path scores the same judge on [1, 5].
+    Both contracts now come from `_numeric_bounds`."""
+    import score
+    jc = JudgeConfig(name="j", prompt="rate it",
+                     agent={"allowed_tools": ["Read"]})
+    assert score._numeric_bounds(jc) == (1, 5, True)
