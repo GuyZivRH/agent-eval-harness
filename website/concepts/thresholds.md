@@ -1,7 +1,7 @@
 # Regression thresholds
 
 Thresholds turn judge scores into a **pass/fail gate**. After scoring, the harness
-compares each judge's aggregate against the minimums you declare in `eval.yaml` and
+compares each judge's aggregate against the bounds you declare in `eval.yaml` and
 **exits non-zero** if any is missed — so a regression fails a CI job instead of quietly
 landing in a report.
 
@@ -15,16 +15,19 @@ thresholds:
 Each key under `thresholds` is a **judge name**; each value is a dict of one or more
 threshold checks.
 
-## The three threshold keys
+## The four threshold keys
 
-Every threshold is a *minimum*: the run passes when the metric is `>=` the value. Which
-key you use must match the **value type the judge produces**.
+Three of the keys are *minimums* — the run passes when the metric is `>=` the value.
+`max_error_rate` is the exception: it is a *maximum*, and passes when the error rate is
+`<=` the value. Either way a metric exactly equal to its threshold passes. Which key you
+use must match the **value type the judge produces**.
 
 | Key | Judge type | Metric compared | Value range |
 | --- | --- | --- | --- |
 | `min_pass_rate` | Boolean (`return True/False`, `feedback_type: bool`) | Fraction of cases that passed | `0.0`–`1.0` |
 | `min_mean` | Numeric (a score on the judge's `score_range`) | Mean score across cases | matches the score scale |
 | `min_win_rate` | [Pairwise](pairwise-and-sampling.md) | Win rate vs. a baseline run | `0.0`–`1.0` |
+| `max_error_rate` | Any judge | Fraction of cases where the judge errored | `0.0`–`1.0` |
 
 !!! note "How aggregates are derived"
     The harness aggregates each judge across all cases before checking thresholds:
@@ -78,7 +81,7 @@ that is *not* silently ignored.
 !!! tip "Unknown keys and unknown judges are silently ignored"
     Thresholds are stored as-is at config load — there is no key-name validation. A typo
     like `min_pass` (instead of `min_pass_rate`) simply does nothing, and a threshold
-    naming a judge that doesn't exist in the results is skipped. Only the three keys above
+    naming a judge that doesn't exist in the results is skipped. Only the four keys above
     are honored.
 
 ## How detection works
@@ -132,7 +135,7 @@ Thresholds are enforced in two places, both of which `exit(1)` on any regression
 ## Optional baseline comparison
 
 Pass a prior run to also flag **relative degradation**, independent of the absolute
-minimums above:
+bounds above:
 
 ```bash
 python3 skills/eval-run/scripts/score.py regression \

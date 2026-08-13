@@ -1,8 +1,8 @@
 # thresholds
 
 `thresholds` turns judge scores into a **pass/fail gate**. Each entry maps a
-[judge](judges.md) name to one or more minimum-metric checks; if a run falls
-below any of them, scoring exits non-zero — the hook you want for CI.
+[judge](judges.md) name to one or more metric checks; if a run misses any of
+them, scoring exits non-zero — the hook you want for CI.
 
 ```yaml
 thresholds:
@@ -34,8 +34,9 @@ still reports a `mean` over the survivors and passes `min_mean`. Declare
 is off unless declared — one flaky judge run should not fail a suite by
 default.
 
-You may set more than one key per judge; each is checked independently. Values
-are compared with `<`, so a metric exactly equal to the threshold **passes**.
+You may set more than one key per judge; each is checked independently. The
+three `min_*` keys are compared with `<` and `max_error_rate` with `>`, so a
+metric exactly equal to its threshold **passes** either way.
 
 ## Match the key to the judge's value type
 
