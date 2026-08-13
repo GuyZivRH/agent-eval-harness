@@ -607,3 +607,45 @@ class TestFractionalScaleWithoutFeedbackType:
     def test_an_explicit_feedback_type_still_wins(self):
         assert self._bounds([0, 2], "float")[2] is False
         assert self._bounds([0, 2], "int")[2] is True
+
+
+class TestLLMJudgeWiring:
+    """The declared scale must survive the trip from eval.yaml to the request.
+
+    `TestJudgeRequestPayload` hands `_call_structured_judge` its bounds
+    directly, so it cannot see whether anything resolves them from the
+    JudgeConfig. Deleting `bounds=bounds` in `_load_llm_judge` — reverting the
+    #182 fix outright — left the whole suite green.
+    """
+
+    def _request(self, **judge_kwargs):
+        import os
+        import score
+        config = EvalConfig(name="t", skill="t")
+        config.models = ModelsConfig(judge="claude-sonnet-4-6")
+        jc = JudgeConfig(name="j", prompt="rate it", **judge_kwargs)
+        resp = type("R", (), {"content": [type("B", (), {
+            "type": "tool_use", "name": "submit_score",
+            "input": {"score": 1, "rationale": "r"}})()]})()
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "k"}), \
+                patch("score._get_anthropic_client") as mock_client:
+            mock_client.return_value.messages.create.return_value = resp
+            scorer = score._load_llm_judge(jc, config)
+            scorer(outputs={})
+            return mock_client.return_value.messages.create.call_args.kwargs
+
+    def test_declared_range_reaches_the_system_prompt_and_schema(self):
+        kwargs = self._request(feedback_type="int", score_range=[0, 2])
+        assert "0-2" in kwargs["system"] and "1-5" not in kwargs["system"]
+        prop = kwargs["tools"][0]["input_schema"]["properties"]["score"]
+        assert (prop["minimum"], prop["maximum"]) == (0, 2)
+
+    def test_the_default_scale_is_still_one_to_five(self):
+        kwargs = self._request(feedback_type="int")
+        assert "1-5" in kwargs["system"]
+        prop = kwargs["tools"][0]["input_schema"]["properties"]["score"]
+        assert (prop["minimum"], prop["maximum"]) == (1, 5)
+
+    def test_a_float_judge_asks_for_a_number(self):
+        kwargs = self._request(feedback_type="float", score_range=[0, 1])
+        assert kwargs["tools"][0]["input_schema"]["properties"]["score"]["type"] == "number"
