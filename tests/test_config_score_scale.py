@@ -108,6 +108,25 @@ def test_numeric_llm_judge_without_a_range_warns(tmp_path):
         _config(tmp_path, "  - {name: j, feedback_type: int, prompt: 'p'}\n")
 
 
+def test_llm_judge_with_no_feedback_type_and_no_range_warns(tmp_path):
+    """The commonest shape, and the one the warning most needs to reach.
+
+    `feedback_type` is optional and score.py treats anything but "bool" as
+    numeric, so this judge is scored on the unenforced [1, 5] default.
+    Gating the warning on ("int", "float") meant it never fired here.
+    """
+    with pytest.warns(UserWarning, match="no 'score_range'"):
+        _config(tmp_path, "  - {name: j, prompt: 'p'}\n")
+
+
+def test_a_bool_judge_without_a_range_is_silent(tmp_path):
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _config(tmp_path, "  - {name: j, feedback_type: bool, prompt: 'p'}\n")
+
+
 def test_numeric_llm_judge_with_a_range_is_silent(tmp_path):
     import warnings
 

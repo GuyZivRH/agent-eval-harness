@@ -1141,7 +1141,11 @@ class EvalConfig:
                     f"Judge '{jc.name}': builtin LLM judge '{jc.builtin}' is "
                     "always scored as pass/fail, so 'feedback_type'/"
                     "'score_range' would be silently ignored")
-            if (jc.feedback_type in ("int", "float") and not jc.score_range
+            # `feedback_type` is optional, and score.py's `_numeric_bounds`
+            # treats anything that is not "bool" as numeric — so the judge that
+            # most needs this warning is the one that declares neither field,
+            # and gating on ("int", "float") alone never reached it.
+            if (jc.feedback_type in ("int", "float", "") and not jc.score_range
                     and not jc.builtin
                     and (jc.prompt or jc.prompt_file or jc.llm_rubric)):
                 import warnings
