@@ -17,6 +17,7 @@ import argparse
 import importlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -953,7 +954,9 @@ def _enforce_bounds(value, bounds, judge_name):
     if bounds is None or isinstance(value, bool) or not isinstance(value, (int, float)):
         return value
     lo, hi, _ = bounds
-    if value < lo or value > hi:
+    # NaN first: it compares False against everything, so both bounds checks
+    # below pass it through, and one NaN poisons the judge's whole mean.
+    if not math.isfinite(value) or value < lo or value > hi:
         raise ScoreRangeError(
             f"judge '{judge_name}' returned {value}, outside its declared "
             f"score_range [{_fmt_bound(lo)}, {_fmt_bound(hi)}]")

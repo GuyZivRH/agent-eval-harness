@@ -129,3 +129,14 @@ def test_the_mlflow_fallback_judge_is_told_its_scale(monkeypatch):
                      score_range=[0, 2])
     sc._load_llm_judge(jc, config)
     assert "between 0 and 2" in captured["instructions"]
+
+
+def test_a_non_finite_value_is_rejected(tmp_path):
+    """NaN compares False against every bound, so `value < lo or value > hi`
+    waved it through and one sample turned the judge's whole mean into NaN."""
+    config = _config(tmp_path, "  - {name: nanny, score_range: [0, 2], "
+                               "check: \"return (float('nan'), 'r')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    entry = result["per_case"]["case-1"]["nanny"]
+    assert entry["value"] is None
+    assert "outside its declared score_range" in entry["error"]
