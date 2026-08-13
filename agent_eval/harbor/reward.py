@@ -324,10 +324,15 @@ def compose_reward(per_judge: dict, *,
 
     gate_ok = True
     normalized_scores: list[float] = []
+    failed = False
 
     for name, rec in per_judge.items():
         value = rec.get("value")
         if value is None:
+            # A judge that errored produced no verdict; one skipped by its
+            # `if:` condition was never meant to. Only the former means the
+            # trial went unscored.
+            failed = failed or bool(rec.get("error"))
             continue
         if isinstance(value, bool) and not value:
             gate_ok = False
@@ -342,6 +347,15 @@ def compose_reward(per_judge: dict, *,
         reward = 0.0
     elif normalized_scores:
         reward = sum(normalized_scores) / len(normalized_scores)
+    elif failed:
+        # Nothing scored because every scoring judge errored. The 1.0 below is
+        # for a gates-only config, where passing every gate IS the top reward;
+        # handing it to a trial we could not score inverts the signal — a model
+        # that ignores its rubric's scale earns a ScoreRangeError on each judge
+        # and outscores one that obeys it (2/2 on [0, 2] composes to 1.0, but
+        # 1/1 composes to 0.5). Since a failed gate is already 0.0, an unscored
+        # trial is too.
+        reward = 0.0
     else:
         reward = 1.0
     return reward, metrics

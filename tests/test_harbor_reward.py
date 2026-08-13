@@ -49,14 +49,21 @@ def test_compose_reward_all_pass_no_numeric():
     assert reward == 1.0
 
 
-def test_compose_reward_ignores_skipped_and_errored():
+def test_compose_reward_ignores_skipped_but_not_errored():
+    """A skipped judge was never meant to score; an errored one failed to.
+
+    Both are `value: None` and neither gates nor averages, but only the second
+    means the trial went unscored, so it no longer collects the gates-only 1.0.
+    Before score_range enforcement an errored judge was a rare exception; now
+    every off-scale value becomes one.
+    """
     per_judge = {
         "skipped": {"value": None, "rationale": "Skipped", "judge_type": "check"},
         "errored": {"value": None, "error": "boom", "judge_type": "llm"},
         "ok": {"value": True, "judge_type": "check"},
     }
     reward, metrics = reward_mod.compose_reward(per_judge)
-    assert reward == 1.0           # None values neither gate nor average
+    assert reward == 0.0
     assert "skipped" not in metrics
     assert "errored" not in metrics
 
@@ -533,3 +540,39 @@ def test_judge_ranges_reads_declared_ranges_off_the_config():
         JudgeConfig(name="plain"),
     ]})()
     assert reward_mod.judge_ranges(config) == {"scoped": (0.0, 2.0)}
+
+
+class TestUnscoredTrials:
+    """An unscored trial must not outscore a correctly scored one."""
+
+    def test_all_numeric_judges_erroring_is_not_a_perfect_reward(self):
+        per_judge = {"q": {"value": None, "error": "off scale"},
+                     "r": {"value": None, "error": "off scale"}}
+        reward, _ = reward_mod.compose_reward(per_judge)
+        assert reward == 0.0
+
+    def test_a_passing_gate_does_not_rescue_errored_scorers(self):
+        per_judge = {"files_exist": {"value": True},
+                     "q": {"value": None, "error": "off scale"}}
+        reward, _ = reward_mod.compose_reward(per_judge)
+        assert reward == 0.0
+
+    def test_obeying_the_scale_still_beats_breaching_it(self):
+        ranges = {"q": (0, 2), "r": (0, 2)}
+        obeys, _ = reward_mod.compose_reward({"q": {"value": 1}, "r": {"value": 1}},
+                                             judge_ranges=ranges)
+        breaches, _ = reward_mod.compose_reward(
+            {"q": {"value": None, "error": "off scale"},
+             "r": {"value": None, "error": "off scale"}}, judge_ranges=ranges)
+        assert obeys > breaches
+
+    def test_a_gates_only_config_still_rewards_a_clean_pass(self):
+        reward, _ = reward_mod.compose_reward({"files_exist": {"value": True}})
+        assert reward == 1.0
+
+    def test_a_condition_skipped_judge_is_not_a_failure(self):
+        per_judge = {"files_exist": {"value": True},
+                     "q": {"value": None,
+                           "rationale": "Skipped: condition 'x' is false"}}
+        reward, _ = reward_mod.compose_reward(per_judge)
+        assert reward == 1.0
