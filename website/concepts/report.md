@@ -135,8 +135,8 @@ then every judge grouped into three colour-coded bands:
 | Band | Judges | Cell values |
 | --- | --- | --- |
 | **Gate Judges** | inline `check` judges | binary `PASS` / `FAIL` |
-| **LLM Judges** | `prompt`/`prompt_file`, `agent`, and LLM builtins | scored; coloured by position in `score_range` when the judge declares one |
-| **Other** | Python builtins, external `module` judges | scores; uncoloured unless the judge declares a `score_range`, banded on that scale when it does |
+| **LLM Judges** | `prompt`/`prompt_file`, `agent`, and LLM builtins | `PASS` / `FAIL` for a boolean judge; a numeric one is coloured by position in `score_range` when it declares one |
+| **Other** | Python builtins, external `module` judges | `PASS` / `FAIL` for a boolean judge; a numeric one is uncoloured unless it declares a `score_range`, banded on that scale when it does |
 
 The **Reward** value is computed with the same `compose_reward` logic the
 harness trains on, so the number shown matches your configured

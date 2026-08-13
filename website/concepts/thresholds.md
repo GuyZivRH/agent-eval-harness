@@ -53,18 +53,27 @@ that is *not* silently ignored.
       [output_quality] pass_rate: >= 0.9 -> n/a
     ```
 
-    The detail explains why, e.g. *"pass_rate unavailable — judge skipped for all cases
-    or not a boolean judge"* — it says *skipped* even when the real cause was an error on
-    every case (every returned value rejected by its `score_range`, say). Fix it by
-    switching to `min_mean` for the numeric judge (or by ensuring the judge isn't
-    `if`-skipped for every case).
+    The detail names the cause: *"pass_rate unavailable — judge errored on 12 cases; see
+    the per-case rationales"* when every value was rejected (by its `score_range`, say),
+    or *"…judge skipped for all cases or not a boolean judge"* when the judge genuinely
+    never ran. Fix the first by looking at the rationales, the second by switching to
+    `min_mean` for a numeric judge or by loosening an `if:` that skipped every case.
 
-!!! warning "Partial errors silently shrink the sample"
+!!! warning "Partial errors shrink the sample — gate them with `max_error_rate`"
     A judge that errors on *some* cases still produces a `mean` — over the survivors only.
-    Two off-scale cases out of ten leave `min_mean` gating the remaining eight, and the run
-    still exits `0`. The report shows `ERROR` for the judge only when *no* case produced a
-    value; short of that, check the per-case rationales (an errored cell reads
-    `ERROR: …`) before trusting a mean.
+    Two off-scale cases out of ten leave `min_mean` gating the remaining eight, and one
+    good score with nine errors passes a `min_mean` outright. The report shows `ERROR` for
+    the judge only when *no* case produced a value.
+
+    ```yaml
+    thresholds:
+      output_quality:
+        min_mean: 3.5
+        max_error_rate: 0.2    # ...over at least 80% of the dataset
+    ```
+
+    `max_error_rate` is off unless declared, so this is opt-in: one flaky judge run
+    should not fail a suite by default.
 
 !!! tip "Unknown keys and unknown judges are silently ignored"
     Thresholds are stored as-is at config load — there is no key-name validation. A typo

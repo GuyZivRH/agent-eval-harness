@@ -140,3 +140,45 @@ def test_a_non_finite_value_is_rejected(tmp_path):
     entry = result["per_case"]["case-1"]["nanny"]
     assert entry["value"] is None
     assert "outside its declared score_range" in entry["error"]
+
+
+def test_an_all_errored_judge_reports_the_real_cause(tmp_path):
+    """"skipped for all cases" hid the actionable cause, and score_range
+    enforcement makes an all-errored judge a realistic outcome."""
+    current = {"q": {"mean": None, "values": [], "errored_cases": 3}}
+    regs = sc.detect_regressions(current, {"q": {"min_mean": 1.0}})
+    assert "errored on 3 cases" in regs[0].detail
+    assert "skipped" not in regs[0].detail
+
+
+def test_a_genuinely_skipped_judge_still_says_skipped(tmp_path):
+    current = {"q": {"mean": None, "values": [], "errored_cases": 0}}
+    regs = sc.detect_regressions(current, {"q": {"min_mean": 1.0}})
+    assert "skipped for all cases" in regs[0].detail
+
+
+def test_max_error_rate_gates_a_shrinking_sample(tmp_path):
+    """A judge that errors on SOME cases still yields a mean over the
+    survivors, so `min_mean` alone lets one good score and nine errors pass."""
+    current = {"q": {"mean": 2.0, "values": [2.0], "errored_cases": 9}}
+    assert sc.detect_regressions(current, {"q": {"min_mean": 1.0}}) == []
+    regs = sc.detect_regressions(current, {"q": {"min_mean": 1.0,
+                                                 "max_error_rate": 0.2}})
+    assert [r.metric for r in regs] == ["error_rate"]
+    assert regs[0].current_value == "0.900"
+    assert "9 of 10 cases errored" in regs[0].detail
+
+
+def test_max_error_rate_tolerates_what_it_allows(tmp_path):
+    current = {"q": {"mean": 2.0, "values": [2.0] * 9, "errored_cases": 1}}
+    assert sc.detect_regressions(current, {"q": {"min_mean": 1.0,
+                                                 "max_error_rate": 0.2}}) == []
+
+
+def test_error_counts_reach_the_aggregate(tmp_path):
+    """detect_regressions can only distinguish the two causes if score_cases
+    records them."""
+    config = _config(tmp_path, "  - {name: q, score_range: [0, 2], "
+                               "check: \"return (7, 'off scale')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    assert result["aggregated"]["q"]["errored_cases"] == 1

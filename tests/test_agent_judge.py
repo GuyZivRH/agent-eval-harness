@@ -170,12 +170,12 @@ class TestVerdictParsing:
         told "integer", so a fractional answer is rounded to it (below), the
         same as the LLM path does for the identical judge config."""
         judge = _agent_judge(score_range=[0, 5.5])
-        (val, rat), _ = self._run(judge, {"score": 3.5, "rationale": "ok"})
+        (val, _rat), _ = self._run(judge, {"score": 3.5, "rationale": "ok"})
         assert val == 3.5
 
     def test_a_whole_scale_rounds_the_agent_verdict(self):
         judge = _agent_judge(score_range=[0, 5])
-        (val, rat), _ = self._run(judge, {"score": 3.5, "rationale": "ok"})
+        (val, _rat), _ = self._run(judge, {"score": 3.5, "rationale": "ok"})
         assert val == 4
 
     def test_score_range_not_clamped_here(self):

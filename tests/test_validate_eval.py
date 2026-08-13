@@ -91,8 +91,11 @@ class TestJudgeFieldContract:
         sys.path.insert(0, str(REPO_ROOT))
         from agent_eval.config import JudgeConfig
 
-        known = {f.name for f in dataclasses.fields(JudgeConfig)} | {"if"}
-        assert _valid_judge_fields() <= known, (
+        # `condition` must NOT be accepted — YAML spells it `if`. Leaving it in
+        # `known` would let an accidental `condition` entry pass this test.
+        known = ({f.name for f in dataclasses.fields(JudgeConfig)}
+                 - {"condition"}) | {"if"}
+        assert _valid_judge_fields() == known, (
             f"validate_eval accepts field(s) JudgeConfig does not define: "
             f"{sorted(_valid_judge_fields() - known)}"
         )

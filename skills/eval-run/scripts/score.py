@@ -1249,7 +1249,8 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
     if not case_dirs:
         return {"per_case": {}, "aggregated": {n: {"values": [], "mean": None, "pass_rate": None} for n, *_ in judges}}
     per_case = {}
-    aggregated = {name: {"values": []} for name, *_ in judges}
+    aggregated = {name: {"values": [], "errored_cases": 0}
+                  for name, *_ in judges}
     parallelism = min(len(case_dirs), os.cpu_count() or 4)
     lock = threading.Lock()
     completed = 0
@@ -1346,8 +1347,15 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
             per_case[case_id] = case_results
             with lock:
                 for name, result in case_results.items():
-                    if name in aggregated and result.get("value") is not None:
+                    if name not in aggregated:
+                        continue
+                    if result.get("value") is not None:
                         aggregated[name]["values"].append(result["value"])
+                    elif result.get("error"):
+                        # Distinguishes "errored" from "if:-skipped", which the
+                        # threshold diagnostics conflated into "skipped".
+                        aggregated[name]["errored_cases"] = (
+                            aggregated[name].get("errored_cases", 0) + 1)
                 print(f"  [{completed}/{len(case_dirs)}] {case_id}", flush=True)
 
     # Compute aggregates
@@ -2207,6 +2215,21 @@ class Regression:
     detail: str = ""
 
 
+def _unavailable_reason(current, metric, kind):
+    """Why a thresholded metric is None — errored beats skipped.
+
+    Saying "skipped" when every case actually errored hides the actionable
+    cause, and score_range enforcement makes an all-errored judge a realistic
+    outcome rather than an exotic one.
+    """
+    errored = current.get("errored_cases") or 0
+    if errored:
+        return (f"{metric} unavailable — judge errored on {errored} case"
+                f"{'s' if errored != 1 else ''}; see the per-case rationales")
+    return (f"{metric} unavailable — judge skipped for all cases "
+            f"or not {kind}")
+
+
 def detect_regressions(current_results, thresholds, baseline_results=None):
     regressions = []
     for judge_name, threshold in thresholds.items():
@@ -2223,18 +2246,35 @@ def detect_regressions(current_results, thresholds, baseline_results=None):
             if rate is None:
                 regressions.append(Regression(
                     judge_name, "pass_rate", f">= {threshold['min_pass_rate']}",
-                    "n/a", "pass_rate unavailable — judge skipped for all cases "
-                    "or not a boolean judge"))
+                    "n/a", _unavailable_reason(current, "pass_rate",
+                                                "a boolean judge")))
             elif rate < threshold["min_pass_rate"]:
                 regressions.append(Regression(judge_name, "pass_rate",
                                               f">= {threshold['min_pass_rate']}", str(rate)))
+        # Opt-in coverage gate. A judge that errors on SOME cases still yields a
+        # mean — over the survivors only — so `min_mean` silently gates a
+        # shrinking sample: one good score and nine errors passes. Enforcement
+        # of `score_range` makes that a realistic outcome, so CI needs a way to
+        # say how much of the dataset actually has to be scored. Off unless
+        # declared, because one flaky judge run should not fail a suite by
+        # default.
+        if "max_error_rate" in threshold:
+            errored = current.get("errored_cases") or 0
+            scored = len(current.get("values") or [])
+            total = errored + scored
+            rate = (errored / total) if total else 0.0
+            if rate > threshold["max_error_rate"]:
+                regressions.append(Regression(
+                    judge_name, "error_rate",
+                    f"<= {threshold['max_error_rate']}", f"{rate:.3f}",
+                    f"{errored} of {total} cases errored"))
         if "min_mean" in threshold:
             mean = current.get("mean")
             if mean is None:
                 regressions.append(Regression(
                     judge_name, "mean", f">= {threshold['min_mean']}",
-                    "n/a", "mean unavailable — judge skipped for all cases "
-                    "or not a numeric judge"))
+                    "n/a", _unavailable_reason(current, "mean",
+                                                "a numeric judge")))
             elif mean < threshold["min_mean"]:
                 regressions.append(Regression(judge_name, "mean",
                                               f">= {threshold['min_mean']}", str(mean)))

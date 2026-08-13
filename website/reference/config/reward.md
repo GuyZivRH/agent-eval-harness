@@ -157,7 +157,8 @@ With no `reward` block, the harness falls back to a built-in composition:
   falling back to `[1, 5]` only when it declares none — and the normalized values are averaged;
 - if nothing scored because every scoring judge **errored** (e.g. values rejected as
   off-scale), the reward is `0.0`;
-- if there simply were no numeric judges and the gate passed, the reward is `1.0`.
+- if the gate passed and nothing was normalized — no numeric judges, or every one of
+  them skipped by its `if:` condition — the reward is `1.0`.
 
 ## See also
 

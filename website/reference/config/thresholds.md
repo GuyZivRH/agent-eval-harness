@@ -10,6 +10,7 @@ thresholds:
     min_mean: 3.5            # numeric judge — average score across cases
   has_content:
     min_pass_rate: 1.0       # boolean judge — fraction of cases passing (0.0–1.0)
+    max_error_rate: 0.2      # optional — fail if >20% of cases errored
   # pairwise:
   #   min_win_rate: 0.6      # pairwise judge — fraction of cases won vs baseline
 ```
@@ -17,13 +18,21 @@ thresholds:
 The block is a plain mapping (`dict`, default empty). When it is empty or
 omitted, no gate runs and scoring always succeeds.
 
-## The three keys
+## The four keys
 
 | Key | Applies to | Metric compared | Passes when |
 | --- | --- | --- | --- |
 | `min_mean` | numeric (score) judges | mean score across cases | `mean >= min_mean` |
 | `min_pass_rate` | boolean judges | fraction of cases returning `True` | `pass_rate >= min_pass_rate` |
 | `min_win_rate` | the `pairwise` judge | fraction of cases won vs the `--baseline` run | `win_rate >= min_win_rate` |
+| `max_error_rate` | any judge | fraction of cases where the judge errored | `error_rate <= max_error_rate` |
+
+`max_error_rate` is the coverage gate. The other three are computed over the
+cases that produced a value, so a judge that errors on most of the dataset
+still reports a `mean` over the survivors and passes `min_mean`. Declare
+`max_error_rate` to say how much of the dataset actually has to be scored. It
+is off unless declared — one flaky judge run should not fail a suite by
+default.
 
 You may set more than one key per judge; each is checked independently. Values
 are compared with `<`, so a metric exactly equal to the threshold **passes**.

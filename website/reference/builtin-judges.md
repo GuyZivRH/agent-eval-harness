@@ -31,7 +31,8 @@ graph LR
 
 !!! info "Two kinds of judge"
     A `.py` file is a **python** judge — its `judge(outputs, **kwargs)` returns
-    `(passed: bool, rationale: str)`. A `.md` file is an **LLM** judge — a Jinja2 prompt
+    `(value, rationale: str)`, where `value` is a `bool` for a pass/fail judge or a
+    number for a scored one (declare its scale with `score_range`). A `.md` file is an **LLM** judge — a Jinja2 prompt
     rendered with `outputs` and `arguments`, scored **pass/fail** by `models.judge` —
     those prompts state their own verdict contract, so declaring a `score_range` or a
     non-`bool` `feedback_type` on one is rejected at config load. Python builtins are

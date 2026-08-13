@@ -520,7 +520,7 @@ def validate_config(path="eval.yaml"):
         if unknown_fields:
             errors.append(
                 f"judges.{name} has unknown field(s): {', '.join(sorted(unknown_fields))}. "
-                f"Valid fields: builtin, check, prompt, prompt_file, module+function, llm_rubric"
+                f"Valid fields: {', '.join(sorted(valid_judge_fields))}"
             )
 
         # Check that exactly one implementation type is specified
