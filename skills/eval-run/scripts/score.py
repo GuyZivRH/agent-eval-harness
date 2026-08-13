@@ -1765,7 +1765,19 @@ def _load_llm_judge(jc, config, project_root=None):
     # MLflow make_judge fallback (requires OpenAI-compatible API key)
     try:
         from mlflow.genai.judges import make_judge
-        kwargs = {"name": jc.name, "instructions": prompt}
+        # make_judge takes no scale argument, but `_enforce_bounds` applies to
+        # every judge by name regardless of which scorer produced the value.
+        # Left unstated, this path would be the one place a judge is failed
+        # against a scale it was never given — worse than before the fix.
+        instructions = prompt
+        scale = _numeric_bounds(jc) if jc.score_range else None
+        if scale:
+            lo, hi, is_int = scale
+            instructions += (
+                f"\n\nReturn {'an integer' if is_int else 'a numeric'} score "
+                f"between {_fmt_bound(lo)} and {_fmt_bound(hi)} inclusive. A "
+                "score outside that range is rejected, not clamped.")
+        kwargs = {"name": jc.name, "instructions": instructions}
         if jc.feedback_type:
             kwargs["feedback_value_type"] = _parse_feedback_type(jc.feedback_type)
         return make_judge(**kwargs)

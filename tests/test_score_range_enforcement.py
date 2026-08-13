@@ -98,3 +98,31 @@ def test_a_deterministic_judge_keeps_its_own_fractional_value(tmp_path):
     entry = result["per_case"]["case-1"]["ratio"]
     assert entry["value"] == 0.75
     assert entry.get("error") is None
+
+
+def test_the_mlflow_fallback_judge_is_told_its_scale(monkeypatch):
+    """`_enforce_bounds` applies by judge name whatever produced the value, so
+    a judge on this path would be failed against a scale it never received."""
+    import sys
+    import types
+
+    captured = {}
+
+    def fake_make_judge(**kwargs):
+        captured.update(kwargs)
+        return lambda **_: (1, "r")
+
+    mod = types.ModuleType("mlflow.genai.judges")
+    mod.make_judge = fake_make_judge
+    monkeypatch.setitem(sys.modules, "mlflow.genai.judges", mod)
+    for var in ("ANTHROPIC_VERTEX_PROJECT_ID", "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+
+    from agent_eval.config import EvalConfig, JudgeConfig, ModelsConfig
+    config = EvalConfig(name="t", skill="t")
+    config.models = ModelsConfig(judge="claude-sonnet-4-6")
+    jc = JudgeConfig(name="j", prompt="rate it", feedback_type="int",
+                     score_range=[0, 2])
+    sc._load_llm_judge(jc, config)
+    assert "between 0 and 2" in captured["instructions"]
