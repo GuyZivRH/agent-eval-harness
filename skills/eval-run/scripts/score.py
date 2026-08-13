@@ -870,10 +870,21 @@ def _numeric_bounds(jc):
     the judge declares no `score_range`, so the judge is still told *a* scale;
     only a declared range is enforced (see `_enforce_bounds`).
     """
-    if getattr(jc, "feedback_type", "") == "bool":
+    ft = getattr(jc, "feedback_type", "")
+    if ft == "bool":
         return None
     lo, hi = jc.score_range if jc.score_range else _DEFAULT_SCORE_RANGE
-    return (lo, hi, getattr(jc, "feedback_type", "") != "float")
+    if ft == "float":
+        is_int = False
+    elif ft == "int":
+        is_int = True
+    else:
+        # feedback_type is optional and never inferred, so read the intent off
+        # the scale: whole bounds mean a banded rubric, fractional bounds mean
+        # a continuous one. Declaring `[0, 2.5]` and getting "an integer score
+        # 0-2.5" with an unreachable maximum helps nobody.
+        is_int = float(lo).is_integer() and float(hi).is_integer()
+    return (lo, hi, is_int)
 
 
 def _coerce_number(value, is_int):

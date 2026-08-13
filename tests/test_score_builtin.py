@@ -1,5 +1,6 @@
 """Integration tests for builtin judge resolution in the scoring pipeline."""
 
+from types import SimpleNamespace
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -579,3 +580,30 @@ class TestEnforceBounds:
         from score import _enforce_bounds
         assert _enforce_bounds(True, (0, 2, True), "j") is True
         assert _enforce_bounds(42, None, "j") == 42
+
+
+class TestFractionalScaleWithoutFeedbackType:
+    """`feedback_type` is optional. A fractional `score_range` declared without
+    it used to produce an integer schema whose maximum was unreachable."""
+
+    def _bounds(self, score_range, feedback_type=""):
+        import score
+        jc = SimpleNamespace(name="j", score_range=score_range,
+                             feedback_type=feedback_type)
+        return score._numeric_bounds(jc)
+
+    def test_fractional_bounds_ask_for_a_number(self):
+        lo, hi, is_int = self._bounds([0, 2.5])
+        assert (lo, hi, is_int) == (0, 2.5, False)
+        import score
+        tool = score._score_judge_tool((lo, hi, is_int))
+        assert tool["input_schema"]["properties"]["score"]["type"] == "number"
+        assert "a numeric score 0-2.5" in score._score_system_prompt((lo, hi, is_int))
+
+    def test_whole_bounds_still_ask_for_an_integer(self):
+        assert self._bounds([0, 2])[2] is True
+        assert self._bounds(None)[2] is True  # the [1, 5] default
+
+    def test_an_explicit_feedback_type_still_wins(self):
+        assert self._bounds([0, 2], "float")[2] is False
+        assert self._bounds([0, 2], "int")[2] is True
