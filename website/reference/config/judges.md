@@ -346,13 +346,21 @@ The config fails fast rather than mid-run when:
 - `feedback_type: bool` is combined with a `score_range` — the verdict is
   pass/fail, so the scale would be ignored;
 - `feedback_type: int` declares fractional bounds (use `feedback_type: float`);
-- a **builtin LLM** judge declares `feedback_type` or `score_range` — those
-  prompts state their own pass/fail contract, so the declaration would be
-  dropped. Builtin *Python* judges are unaffected: they may be numeric.
+- a **builtin LLM** judge declares a `feedback_type` other than `bool`, or any
+  `score_range` — those prompts state their own pass/fail contract, so the
+  declaration would be dropped. Builtin *Python* judges are unaffected: they
+  may be numeric.
 
 A numeric LLM or agent judge that declares no `score_range` **warns** rather
 than failing: the model is asked for an unbounded score and nothing checks what
-it returns. Inline `check:` judges are exempt — they compute their own value.
+it returns. Only that warning exempts inline `check:` judges — they compute
+their own value, so there is no model to bound.
+
+A declared `score_range` **is** enforced for every judge type, inline `check:`,
+`module`/`function` and builtin Python judges included: a value outside it is
+recorded as an error sample rather than counted. The value itself is never
+rewritten — enforcement only validates, and rounding to `feedback_type` happens
+where a model's answer is parsed.
 
 ## Related
 

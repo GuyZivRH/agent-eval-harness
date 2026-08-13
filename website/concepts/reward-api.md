@@ -92,9 +92,11 @@ config fails to load if you combine them.
 | `gate` | bool | `true` (formula) / `false` (judge) | Any boolean judge returning `false` zeros the reward. |
 
 !!! tip "`score_range` on the judge vs. on the reward"
-    A judge's own `score_range` only drives report cell coloring. Reward
-    normalization uses **`reward.score_range`** independently — set both when a
-    rubric isn't on the default `[1, 5]`.
+    Without a `reward:` block, each numeric judge is normalized over its **own**
+    declared `score_range`, falling back to `[1, 5]` when it declares none.
+    A `reward:` block overrides that: `reward.score_range` then applies to every
+    numeric judge it composes, so set it to match your rubric when your judges
+    are not on the default scale.
 
 ## Value normalization
 

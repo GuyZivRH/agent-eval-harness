@@ -209,9 +209,8 @@ The prompt is rendered with these variables:
     stating the scale in the rubric text as well; a prompt that says "score 0, 1, or 2" and
     a config that says nothing is the combination that produced silently out-of-range scores
     ([#182](https://github.com/opendatahub-io/agent-eval-harness/issues/182)).
-
-    Set `feedback_type: float` for a fractional scale; scores are otherwise rounded to
-    integers.
+    A model's answer is rounded to an integer unless the scale says otherwise — declare
+    `feedback_type: float`, or fractional bounds such as `[0, 2.5]`, for a continuous scale.
 
 LLM judges — including the agent judges below — are the only types that can be
 **sampled**. Set `samples: 3` to call the model several times per case and reduce the
