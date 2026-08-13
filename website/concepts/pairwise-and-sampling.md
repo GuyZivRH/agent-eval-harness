@@ -217,7 +217,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/score.py pairwise \
 <div class="grid cards" markdown>
 
 - [**Judges**](judges.md) — the five judge types and how they score a case
-- [**Thresholds**](thresholds.md) — `min_win_rate`, `min_mean`, `min_pass_rate` gates
+- [**Thresholds**](thresholds.md) — `min_win_rate`, `min_mean`, `min_pass_rate`, `max_error_rate` gates
 - [**judges reference**](../reference/config/judges.md) — every judge field, including `samples`
 - [**The report**](report.md) — where stability and pairwise verdicts are rendered
 

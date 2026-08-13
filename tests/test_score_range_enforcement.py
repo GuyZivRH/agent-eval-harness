@@ -182,3 +182,25 @@ def test_error_counts_reach_the_aggregate(tmp_path):
                                "check: \"return (7, 'off scale')\"}\n")
     result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
     assert result["aggregated"]["q"]["errored_cases"] == 1
+
+
+def test_max_error_rate_works_on_a_persisted_summary(tmp_path):
+    """`values` is stripped before summary.yaml is written, so a gate that
+    derived its denominator from it read every judge as 100% errored on the
+    standalone `score.py regression` path — the one CI actually calls."""
+    persisted = {"q": {"mean": 4.0, "scored_cases": 9, "errored_cases": 1}}
+    assert sc.detect_regressions(persisted, {"q": {"max_error_rate": 0.2}}) == []
+
+    bad = {"q": {"mean": 4.0, "scored_cases": 1, "errored_cases": 9}}
+    regs = sc.detect_regressions(bad, {"q": {"max_error_rate": 0.2}})
+    assert regs[0].current_value == "0.900"
+
+
+def test_scored_cases_survives_into_the_summary(tmp_path):
+    config = _config(tmp_path, "  - {name: q, score_range: [0, 2], "
+                               "check: \"return (1, 'ok')\"}\n")
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    agg = result["aggregated"]["q"]
+    assert agg["scored_cases"] == 1
+    # What cmd_judges actually persists — no `values` key.
+    assert "scored_cases" in {k: v for k, v in agg.items() if k != "values"}

@@ -65,7 +65,8 @@ data:
 - the judge was **skipped for every case** (e.g. an `if:` condition never fired),
 - the judge **errored on every case** — every value rejected by its
   [`score_range`](judges.md), say, since an off-scale value is recorded as an error
-  sample and never aggregated (the reported detail still blames a skip), or
+  sample and never aggregated (the detail names it: *"…judge errored on N cases; see
+  the per-case rationales"*), or
 - the threshold **targets the wrong judge type** — `min_pass_rate` on a numeric
   judge, or `min_win_rate` without a pairwise comparison.
 

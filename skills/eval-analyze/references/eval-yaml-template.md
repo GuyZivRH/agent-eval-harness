@@ -378,6 +378,8 @@ thresholds:
   <judge_name>:
     min_pass_rate: 1.0     # for boolean judges (check, builtin)
     # min_mean: 3.5        # for numeric judges (llm)
+    # max_error_rate: 0.2  # optional coverage gate: fail if >20% of cases errored.
+    #                      # min_mean is computed over the survivors only.
 
 # Reward composition (OPTIONAL) — collapse per-judge results into a single
 # scalar in [0, 1] for RL training (GRPO). Only needed when training; the

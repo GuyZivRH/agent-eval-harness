@@ -193,7 +193,7 @@ jobs:
 
     ---
 
-    The full reference for `min_mean`, `min_pass_rate`, and `min_win_rate`.
+    The full reference for `min_mean`, `min_pass_rate`, `min_win_rate`, and `max_error_rate`.
 
     [:octicons-arrow-right-24: thresholds reference](../reference/config/thresholds.md)
 

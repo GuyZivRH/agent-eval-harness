@@ -1361,6 +1361,10 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
     # Compute aggregates
     for name in aggregated:
         values = aggregated[name]["values"]
+        # `values` is stripped before persistence, so anything computed from
+        # its length has to survive as its own field or the standalone
+        # `score.py regression` path silently loses the denominator.
+        aggregated[name]["scored_cases"] = len(values)
         if not values:
             aggregated[name]["mean"] = None
             aggregated[name]["pass_rate"] = None
@@ -2260,7 +2264,9 @@ def detect_regressions(current_results, thresholds, baseline_results=None):
         # default.
         if "max_error_rate" in threshold:
             errored = current.get("errored_cases") or 0
-            scored = len(current.get("values") or [])
+            scored = current.get("scored_cases")
+            if scored is None:            # pre-1.38 summary.yaml
+                scored = len(current.get("values") or [])
             total = errored + scored
             rate = (errored / total) if total else 0.0
             if rate > threshold["max_error_rate"]:

@@ -94,11 +94,15 @@ flowchart TD
     C --> D[min_pass_rate -> pass_rate]
     C --> E[min_mean -> mean]
     C --> F[min_win_rate -> win_rate]
+    C --> EC[max_error_rate -> error_rate]
     D & E & F --> G{metric is None?}
     G -- yes --> R1[regression: n/a]
     G -- no --> H{metric < threshold?}
     H -- yes --> R2[regression]
     H -- no --> P[pass]
+    EC --> HE{error_rate > threshold?}
+    HE -- yes --> R2
+    HE -- no --> P
     R1 & R2 --> X[exit code 1]
 ```
 

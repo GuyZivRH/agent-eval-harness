@@ -356,7 +356,7 @@ thresholds:
 - **`runner`** — `type` discriminator selects the runner implementation; remaining fields (`effort`, `settings`, `plugin_dirs`, `env`, `system_prompt`) are runner-specific and ignored by other runners.
 - **`models`** — `skill`/`subagent`/`judge`/`hook` defaults, overridable per-judge or via CLI flags. `hook` is the model used for LLM-based AskUserQuestion answering.
 - **`mlflow`** — `experiment` (and optional `tracking_uri`/`tags`) for result logging.
-- **`thresholds`** — per-judge regression detection. Valid keys: `min_mean` (minimum average score), `min_pass_rate` (minimum fraction of cases passing, 0.0–1.0), `min_win_rate` (minimum pairwise win rate).
+- **`thresholds`** — per-judge regression detection. Valid keys: `min_mean` (minimum average score), `min_pass_rate` (minimum fraction of cases passing, 0.0–1.0), `min_win_rate` (minimum pairwise win rate), `max_error_rate` (**maximum** fraction of cases the judge may error on, 0.0–1.0 — an opt-in coverage gate; the other three are computed over the cases that produced a value).
 
 ## Example: eval.yaml for RFE Creator
 

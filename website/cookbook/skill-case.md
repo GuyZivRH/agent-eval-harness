@@ -188,6 +188,7 @@ judge name exactly.
 | boolean (`check`, most `builtin`) | `min_pass_rate` | Minimum fraction of cases passing (0.0–1.0) |
 | numeric (`llm`) | `min_mean` | Minimum average score across cases |
 | pairwise | `min_win_rate` | Minimum win rate versus a baseline |
+| any kind | `max_error_rate` | **Maximum** fraction of cases the judge may error on (opt-in coverage gate) |
 
 ## 5. Run it
 
