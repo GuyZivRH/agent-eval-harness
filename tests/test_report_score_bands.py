@@ -85,3 +85,17 @@ def test_reward_overview_normalizes_over_each_judge_declared_range():
     summary = {"per_case": {"case-1": {"q": {"value": 2}, "r": {"value": 2}}}}
     html = _render_reward_overview(summary, config)
     assert re.search(r"1\.0000", html), html
+
+
+def test_a_fractional_off_scale_value_is_not_truncated_into_range():
+    """int() ran before the widening, so 2.9 on a [0, 2] judge became a 2 and
+    rendered as a top-of-scale reading instead of an off-scale one."""
+    glyph = _ascii_score_hist(1, [1, 2, 2.9], smin=0, smax=2)
+    assert glyph.endswith(" 3")
+
+
+def test_a_wild_reading_cannot_explode_the_axis():
+    """Widening ran before the bin cap, and the cap's fallback was the same
+    span it had just widened to — so the guard could not shrink anything."""
+    glyph = _ascii_score_hist(2, [2, 2, 100000], smin=0, smax=2)
+    assert len(glyph) < 120

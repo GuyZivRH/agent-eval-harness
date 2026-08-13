@@ -29,13 +29,16 @@ def _case(tmp_path):
     return cd
 
 
-def test_out_of_range_value_becomes_an_error_sample(tmp_path):
+def test_out_of_range_value_becomes_an_error_sample(tmp_path, capsys):
     config = _config(tmp_path, "  - {name: testability, feedback_type: int, "
                                "score_range: [0, 2], check: \"return (4, 'r')\"}\n")
     result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
     entry = result["per_case"]["case-1"]["testability"]
     assert entry["value"] is None
     assert "outside its declared score_range [0, 2]" in entry["error"]
+    # A scale breach is the one judge error that also prints: it is a
+    # prompt/config bug that recurs every run and is worth seeing in the log.
+    assert "WARNING" in capsys.readouterr().err
 
 
 def test_out_of_range_value_is_excluded_from_the_aggregate(tmp_path):
