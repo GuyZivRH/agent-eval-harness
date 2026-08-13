@@ -2213,7 +2213,8 @@ def _render_reward_overview(summary, config, reward_cfg=None):
         if _compose_reward is not None:
             try:
                 reward_val, metrics = _compose_reward(
-                    case_results, reward_cfg=reward_cfg)
+                    case_results, reward_cfg=reward_cfg,
+                    judge_ranges=judge_score_range)
                 # compose_reward returns 1.0 when all judges are None/skipped;
                 # treat as unscored instead of inflating the average.
                 if not metrics:

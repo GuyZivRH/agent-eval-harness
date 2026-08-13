@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "eval-run" / "scripts"))
 
-from report import _ascii_score_hist, _judge_score_ranges, _score_band_class
+from report import (_ascii_score_hist, _judge_score_ranges,
+                    _render_reward_overview, _score_band_class)
 
 
 def test_bands_span_the_declared_scale():
@@ -67,3 +68,20 @@ def test_histogram_bins_widen_to_cover_a_fractional_bound():
     where truncating to 2 would clip it."""
     glyph = _ascii_score_hist(1, [0, 1, 2], smin=0, smax=2.5)
     assert glyph.startswith("0 ") and glyph.endswith(" 3")
+
+
+def test_reward_overview_normalizes_over_each_judge_declared_range():
+    """The report's Reward column must agree with anova.json and reward.json.
+
+    `compose_reward` has three production call sites; wiring `judge_ranges`
+    into only two left the report normalizing a 0-2 judge against the 1-5
+    default, so a perfect 2/2 rendered 0.2500 while `anova.json` said 1.0000
+    for the same summary.yaml.
+    """
+    import re
+
+    config = {"judges": [{"name": "q", "score_range": [0, 2]},
+                         {"name": "r", "score_range": [0, 2]}]}
+    summary = {"per_case": {"case-1": {"q": {"value": 2}, "r": {"value": 2}}}}
+    html = _render_reward_overview(summary, config)
+    assert re.search(r"1\.0000", html), html
