@@ -1,3 +1,17 @@
+# [1.39.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.38.0...v1.39.0) (2026-08-14)
+
+
+### Bug Fixes
+
+* **config:** reject a non-finite score_range, and say what clamping does ([6d383a3](https://github.com/opendatahub-io/agent-eval-harness/commit/6d383a366cee9da58518bfa1e7d016a1244f1c1b))
+* **config:** warn when a clamped reward judge is scored off [0, 1] ([624ffd5](https://github.com/opendatahub-io/agent-eval-harness/commit/624ffd57c739c741fbe52084e8d9040acc99ad92))
+* **reward:** normalize each composed judge over its own score_range ([c3fae09](https://github.com/opendatahub-io/agent-eval-harness/commit/c3fae09215ec802a4f280d74b51acb298594bfd6))
+
+
+### Features
+
+* **config:** make reward.score_range an explicit, deprecated fallback ([129ba16](https://github.com/opendatahub-io/agent-eval-harness/commit/129ba16e2d5a6f921bdd826575d0154fd1639b58))
+
 # [1.38.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.4...v1.38.0) (2026-08-14)
 
 
