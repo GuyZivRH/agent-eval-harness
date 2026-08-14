@@ -1,3 +1,33 @@
+# [1.38.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.4...v1.38.0) (2026-08-14)
+
+
+### Bug Fixes
+
+* address Codex and Harbor review feedback ([a00ac06](https://github.com/opendatahub-io/agent-eval-harness/commit/a00ac06a1d2b07d5867edc2265aab6ef77c58b50))
+* address external review-panel findings (rounds 1-2) ([970f3e0](https://github.com/opendatahub-io/agent-eval-harness/commit/970f3e043d19c0d29fd33568e0a79a445721454f))
+* address final review round and scrub review residue ([c4771a5](https://github.com/opendatahub-io/agent-eval-harness/commit/c4771a59db965a6b1839c84eaaf32be68b1324b4))
+* address independent deep-review round (events, codex, tasks, results) ([71cd2ce](https://github.com/opendatahub-io/agent-eval-harness/commit/71cd2cedafeb1dbbee510b5e03f97ba7ef1c80a4))
+* address remaining CodeRabbit review threads ([0ce8c55](https://github.com/opendatahub-io/agent-eval-harness/commit/0ce8c55968cd667e64e0518bf1a8e61f0ea54171))
+* **container:** install Codex platform binary ([b404f6e](https://github.com/opendatahub-io/agent-eval-harness/commit/b404f6e055c2f4c59278ced829161c29fe3b77b1))
+* guard direct-store result-event fields against malformed values ([e2e7d98](https://github.com/opendatahub-io/agent-eval-harness/commit/e2e7d98d9c1d9a9b58258fec24060f423118088b))
+* **harbor:** address Codex review findings ([f18e7e2](https://github.com/opendatahub-io/agent-eval-harness/commit/f18e7e2a9105382edd0d1273446cc291a917ff6b))
+* **harbor:** address deep-review panel findings ([60886b7](https://github.com/opendatahub-io/agent-eval-harness/commit/60886b78090645a1b61d4c52a70efb50d89e3850))
+* **harbor:** carry runner.system_prompt into task instructions ([7d718fa](https://github.com/opendatahub-io/agent-eval-harness/commit/7d718facfedf8125568fba1ef60398c084873f8e))
+* **harbor:** forward plugin skill roots to every agent, not just Codex ([c5a96af](https://github.com/opendatahub-io/agent-eval-harness/commit/c5a96af795931488383a620ce44d89972e216942))
+* **harbor:** prefer the interpreter's own harbor CLI over PATH ([5134b24](https://github.com/opendatahub-io/agent-eval-harness/commit/5134b2477dd159f32969530a6313f6aee9d1330c))
+* **harbor:** record the effort Harbor's Codex agent actually applied ([f663853](https://github.com/opendatahub-io/agent-eval-harness/commit/f6638534890ab9a0cf1799210cd865487c33a606))
+* **harbor:** surface unjudged steps in the run output ([4cd4109](https://github.com/opendatahub-io/agent-eval-harness/commit/4cd4109c80a7267ed697c15fea361bf3448bc6ad))
+* harden plugin manifest handling and marker reads ([b0fe76d](https://github.com/opendatahub-io/agent-eval-harness/commit/b0fe76de215f45c45196da0a04303709f029c797))
+* per-case console lines no longer print $0.00 for unknown cost ([6b3bca6](https://github.com/opendatahub-io/agent-eval-harness/commit/6b3bca6ab1de45dce71e30e255f7bdd716f616b0))
+* polish Codex event parsing and Harbor task-dir guard messages ([cf1bc9e](https://github.com/opendatahub-io/agent-eval-harness/commit/cf1bc9e0a4bc1c89137785a7328ee1215a7f4631))
+* track explicit Codex document reads ([62152de](https://github.com/opendatahub-io/agent-eval-harness/commit/62152ded7f03049fe21b363515bc61081c1f560f))
+
+
+### Features
+
+* **codex:** estimate local run cost via LiteLLM pricing ([f63157d](https://github.com/opendatahub-io/agent-eval-harness/commit/f63157d186c9cb1e814cadc1f2ceb29003a0e21d))
+* **harbor:** add Codex runner and data mounts ([03271c6](https://github.com/opendatahub-io/agent-eval-harness/commit/03271c677a46bb280a3a6395422bcab85c545acf))
+
 ## [1.37.4](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.37.3...v1.37.4) (2026-08-13)
 
 
