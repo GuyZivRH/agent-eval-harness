@@ -1,3 +1,15 @@
+## [1.39.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.1...v1.39.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **score:** anchor the frontmatter delimiters to line boundaries ([553df7e](https://github.com/opendatahub-io/agent-eval-harness/commit/553df7ee4fde055e6ab5b7c962f272734d459dd1))
+* **score:** judge the drift on evidence, not on case-001 alone ([19f215c](https://github.com/opendatahub-io/agent-eval-harness/commit/19f215c14b77cb9a7cf7de2f4447e32e50bd1048))
+* **score:** only warn about fields the judge actually requires ([7aa063a](https://github.com/opendatahub-io/agent-eval-harness/commit/7aa063a65dd4b04ce6009c1aa1ddda6f5c571d75))
+* **score:** report drift on evidence instead of guessing intent ([5d9c8f9](https://github.com/opendatahub-io/agent-eval-harness/commit/5d9c8f96358d0946fa7d5eb14b0ab1172194de85))
+* **score:** the stale-field probe must never abort a run ([adcd83e](https://github.com/opendatahub-io/agent-eval-harness/commit/adcd83ec0d04c43481629c36fcb8682ed1087aa5))
+* warn on stale inline frontmatter fields ([4451ad8](https://github.com/opendatahub-io/agent-eval-harness/commit/4451ad8564bf86d89509263f11dbf2cf8afe5e0c))
+
 ## [1.39.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.0...v1.39.1) (2026-08-14)
 
 
