@@ -1,3 +1,11 @@
+## [1.39.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.0...v1.39.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **report,mlflow:** a breach the table can't display is still a breach ([b0b6d38](https://github.com/opendatahub-io/agent-eval-harness/commit/b0b6d38769a40b39b3af2dbf94ded540adb41fe1))
+* **report,mlflow:** agree with the CLI on what counts as a regression ([3fd316f](https://github.com/opendatahub-io/agent-eval-harness/commit/3fd316f8b5c2cd20aeb3502c3a677dcff2dd3f5b))
+
 # [1.39.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.38.0...v1.39.0) (2026-08-14)
 
 
