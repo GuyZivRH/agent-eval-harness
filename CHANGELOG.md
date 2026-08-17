@@ -1,3 +1,10 @@
+## [1.39.3](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.2...v1.39.3) (2026-08-17)
+
+
+### Bug Fixes
+
+* **hooks:** survive a hook model that rejects `temperature` ([ffbc493](https://github.com/opendatahub-io/agent-eval-harness/commit/ffbc493b79b61c59e8ab853519e5f41a9310d439))
+
 ## [1.39.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.1...v1.39.2) (2026-08-14)
 
 
