@@ -1,3 +1,13 @@
+## [1.39.4](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.3...v1.39.4) (2026-08-18)
+
+
+### Bug Fixes
+
+* **claude-code:** fail the run when the agent does not recognise the skill ([d541dc6](https://github.com/opendatahub-io/agent-eval-harness/commit/d541dc6b8a546a5d124bf90d57360f3299fce800))
+* **claude-code:** suppress only on positive evidence of work ([b1a8ade](https://github.com/opendatahub-io/agent-eval-harness/commit/b1a8ade3b949d32c4537bdbfc5bdad82f749fde8))
+* **validate:** require plugin_dirs when the skill is not auto-discoverable ([61f144c](https://github.com/opendatahub-io/agent-eval-harness/commit/61f144caf945abc79693a70479429546cb1c50f0))
+* **validate:** verify plugin_dirs actually export the skill ([aa1be78](https://github.com/opendatahub-io/agent-eval-harness/commit/aa1be78be65dd73e1d06bf4a286cc30184562d4c))
+
 ## [1.39.3](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.2...v1.39.3) (2026-08-17)
 
 
