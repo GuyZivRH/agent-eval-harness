@@ -25,12 +25,14 @@ Parse `$ARGUMENTS`:
 | `--no-llm-judges` | no | false | Skip LLM judges (prompt, prompt_file, LLM builtins, agent). Run deterministic judges (check, Python builtins, external code). |
 | `--gold` | no | false | Save outputs as gold references after run |
 | `--effort <level>` | no | `runner.effort` from config | Agent reasoning effort (`claude-code` or `codex`) |
-| `--runner <type>` | no | local | `local` (default Steps 1–8) or `harbor` (containerized — skips to Harbor runner section) |
+| `--runner <type>` | no | local | `local` (default Steps 1–8), `harbor` (containerized), or `openshell` (OpenShell sandboxes) |
 | `--env <name>` | no | `kubernetes` | Harbor execution environment: `podman`, `kubernetes`, `openshift` (only with `--runner harbor`) |
 | `--mount <source:target[:ro or rw]>` | no | — | Repeatable Podman bind mount; defaults to read-only (only with `--runner harbor`) |
 | `--cpus <n>` / `--memory-mb <MiB>` | no | Harbor defaults | Hard resource limits per Harbor environment |
 
 If `--runner harbor`: after config discovery, **skip to the Harbor runner section** below. Steps 2–6 are replaced by one `run.py` call.
+
+If `--runner openshell`: after config discovery, **skip to the OpenShell runner section** below. Steps 2–6 are replaced by one `run.py` call. Requires OpenShell gateway and sandbox image.
 
 ### Config Discovery
 
@@ -310,6 +312,48 @@ The runner creates K8s ConfigMaps for the eval config and project resources
 running the adapter in-process), polls until completion, and maps the results
 into the standard `summary.yaml` + `report.html`. No image rebuild needed —
 ConfigMaps carry the project-specific content.
+
+## OpenShell runner (`--runner openshell`)
+
+When `--runner openshell` is specified, **skip Steps 2–6** (workspace through report)
+and invoke the OpenShell backend directly. The backend handles the full pipeline
+internally: workspace staging, sandbox lifecycle (OpenShell), OpenClaw execution,
+artifact collection, scoring, and report generation. Steps 7+ (pairwise, MLflow)
+still run after the backend completes.
+
+```bash
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR/../..}"
+VENV_PY="$PLUGIN_ROOT/.eval-venv/bin/python3"
+[ -x "$VENV_PY" ] || VENV_PY=python3
+
+PYTHONPATH="$PLUGIN_ROOT:$(pwd)${PYTHONPATH:+:$PYTHONPATH}" "$VENV_PY" -m agent_eval.openshell.run \
+    --config <config> --model <model> --run-id <run-id> \
+    [-n <parallelism>] [--keep-sandbox] [--cases <id> ...] [--no-llm-judges]
+```
+
+### Prerequisites
+
+- `OPENSHELL_GATEWAY_ENDPOINT` — Gateway URL (required)
+- `AGENT_EVAL_OPENSHELL_IMAGE` — Sandbox image with OpenClaw (required)
+- `AGENT_EVAL_OPENSHELL_POLICY` — Policy YAML path (optional)
+- `AGENT_EVAL_OPENSHELL_PROVIDER` — Provider name for model auth (optional)
+
+### Debug mode
+
+Set `--keep-sandbox` or `AGENT_EVAL_OPENSHELL_KEEP_RUN=1` to keep sandboxes
+after trial completion. The backend prints reconnection instructions:
+`openshell sandbox connect <name>`.
+
+### Trajectory capture
+
+OpenClaw session state is captured to `$AGENT_EVAL_RUNS_DIR/<eval-name>/<id>/cases/<case>/trajectory/`.
+Judges can access this via `outputs["trajectory"]` if configured in `outputs:`.
+
+### v1 scope
+
+- Prompt mode only (skill mode deferred)
+- `str.format()` templates (Jinja `{{ input.* }}` deferred)
+- `system_prompt` and `max_budget_usd` ignored with warning
 
 ## Rules
 
