@@ -132,6 +132,28 @@ Credentials come from cluster Secrets, never the host — only `ANTHROPIC_MODEL`
 | `AGENT_EVAL_K8S_KEEP_RUN` | *(off)* | Set to `1` to keep the pod after the run for `kubectl logs` / `kubectl exec` debugging. |
 | `AGENT_EVAL_K8S_INSTALL_PACKAGES` | *(off)* | Set to `1` to allow in-pod package/agent installs. By default pre-built images skip them. |
 
+## OpenShell backend
+
+Read by `agent_eval.openshell.run` when running with `--runner openshell`.
+The OpenShell backend runs OpenClaw inside policy-enforced sandboxes with
+Landlock filesystem and network egress control.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `OPENSHELL_GATEWAY_ENDPOINT` | *(none)* | Gateway URL (required). Example: `https://127.0.0.1:17670`. |
+| `AGENT_EVAL_OPENSHELL_IMAGE` | *(none)* | Container image with OpenClaw pre-installed (required). |
+| `AGENT_EVAL_OPENSHELL_POLICY` | *(none)* | Path to OpenShell policy YAML file. |
+| `AGENT_EVAL_OPENSHELL_PROVIDER` | *(none)* | OpenShell provider name for model authentication (e.g. `anthropic`). |
+| `AGENT_EVAL_OPENSHELL_KEEP_RUN` | *(off)* | Set to `1` to keep sandboxes after trial for `openshell sandbox connect` debugging. |
+
+API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) are forwarded to the
+sandbox via `sandbox exec --env`. For provider-based credentials, set
+`AGENT_EVAL_OPENSHELL_PROVIDER` and the provider handles authentication.
+
+!!! warning "Prefer providers for production"
+    Environment injection passes secrets via command-line arguments, which are
+    visible to same-UID processes. Use OpenShell providers in production.
+
 ## Precedence at a glance
 
 Model and tracking settings each resolve through a fixed chain — the CLI flag or

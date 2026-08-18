@@ -140,10 +140,16 @@ openshell provider create --name anthropic --type anthropic --from-existing
 export AGENT_EVAL_OPENSHELL_PROVIDER=anthropic
 ```
 
-### Option 2: Environment Injection
+### Option 2: Environment Injection (Development Only)
 
-The backend injects `ANTHROPIC_API_KEY` via `sandbox exec --env`.
-OpenClaw uses `--auth-env-only` to read keys from environment.
+The backend forwards API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) via
+`sandbox exec --env`. OpenClaw uses `--auth-env-only` to read keys from environment.
+
+!!! warning "Secrets visible in process list"
+    Environment injection passes secrets via command-line arguments (`--env KEY=VALUE`),
+    which are visible to same-UID processes and may appear in logs. **Use providers
+    for production.** Environment injection is convenient for local development but
+    should not be used in shared or production environments.
 
 ## Pipeline
 

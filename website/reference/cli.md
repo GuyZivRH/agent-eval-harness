@@ -106,8 +106,8 @@ Each run writes `stdout.log`, `stderr.log`, and `run_result.json` into the trace
 ## `python -m` module entry points
 
 The containerized and platform backends aren't console scripts — they're modules you
-invoke with `python -m`. `/eval-run --runner harbor` and `--runner evalhub` call these
-for you; run them directly for CI or debugging.
+invoke with `python -m`. `/eval-run --runner harbor`, `--runner openshell`, and
+`--runner evalhub` call these for you; run them directly for CI or debugging.
 
 ### `agent_eval.harbor.run` — the Harbor backend
 
@@ -186,6 +186,38 @@ python -m agent_eval.evalhub.runner \
     Requires the `evalhub` extra (`pip install 'agent-eval-harness[evalhub]'`). The
     adapter runs **in-process** inside the EvalHub-created Job pod — no sub-pods, no
     Harbor. See the [EvalHub guide](../guides/evalhub.md) and
+    [backends](../concepts/backends.md).
+
+### `agent_eval.openshell.run` — the OpenShell backend
+
+Runs OpenClaw evaluations inside OpenShell policy-enforced sandboxes, handles
+the full pipeline (workspace staging, sandbox lifecycle, execution, collection,
+scoring, reporting), and writes the standard `run_result.json` + `summary.yaml` +
+`report.html` shape.
+
+```bash
+python -m agent_eval.openshell.run \
+  --config eval.yaml \
+  --model opus \
+  --run-id my-run \
+  -n 4
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--config` | Path to `eval.yaml` (required) |
+| `--model` | Model for the agent under test (required) |
+| `--run-id` | Run identifier (default: timestamp) |
+| `-n` / `--parallelism` | Number of concurrent sandbox trials (default `1`) |
+| `--keep-sandbox` | Keep sandboxes after trial for debugging |
+| `--cases` | Restrict to specific case IDs |
+| `--no-llm-judges` | Skip LLM judges |
+
+!!! note "Policy-enforced execution"
+    Requires `OPENSHELL_GATEWAY_ENDPOINT` and `AGENT_EVAL_OPENSHELL_IMAGE`.
+    API keys are forwarded to the sandbox; optionally use
+    `AGENT_EVAL_OPENSHELL_PROVIDER` for provider-based authentication. See the
+    [OpenShell guide](../guides/openshell.md) and
     [backends](../concepts/backends.md).
 
 ## `state.py` — the context-safe state store

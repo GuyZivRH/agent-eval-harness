@@ -177,6 +177,7 @@ nav:
     - "Health-check the harness (/eval-check)": guides/eval-check.md
     - "Running headless (tool interception)": guides/headless.md
     - "Running on Harbor (containers)": guides/harbor.md
+    - "Running on OpenShell (policy-enforced)": guides/openshell.md
     - "Running on EvalHub": guides/evalhub.md
     - "CI integration & regression gating": guides/ci.md
   - "Concepts":

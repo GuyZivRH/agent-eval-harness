@@ -1,8 +1,8 @@
 # Execution backends
 
 One `eval.yaml` describes **what** to evaluate; a CLI flag chooses **where** it
-runs. The same config runs unchanged across three execution backends — Local,
-Harbor, and EvalHub — because the execution substrate is never a config key.
+runs. The same config runs unchanged across four execution backends — Local,
+Harbor, OpenShell, and EvalHub — because the execution substrate is never a config key.
 
 !!! tip "The config is portable by design"
     `eval.yaml` owns the agent type (`runner.type`), dataset, judges, thresholds,
@@ -11,34 +11,39 @@ Harbor, and EvalHub — because the execution substrate is never a config key.
     EvalHub at invocation time with `--runner` — or, for EvalHub, via a
     platform-triggered job (see [EvalHub](../guides/evalhub.md)).
 
-## The three backends
+## The four backends
 
 | Backend | Where cases run | Judging | Invocation |
 | --- | --- | --- | --- |
 | **Local** | Subprocess on your machine (no containers) | In-process (`score.py`) | `/eval-run` |
 | **Harbor** | Containers via Podman (local) or Kubernetes/OpenShift | In-container reward bridge (`reward.json`) | `/eval-run --runner harbor` or `harbor run` |
+| **OpenShell** | Policy-enforced sandboxes (OpenShell gateway) | In-process (`score.py`) | `/eval-run --runner openshell` |
 | **EvalHub** | In-process inside a platform-created Job pod | In-process (`score.py`) | `/eval-run --runner evalhub` or platform-triggered |
 
 ```mermaid
 flowchart TD
     Y["eval.yaml (portable)"] --> L["Local\nsubprocess"]
     Y --> H["Harbor\ncontainers"]
+    Y --> O["OpenShell\nsandboxes"]
     Y --> E["EvalHub\nJob pod adapter"]
     L --> LS["score.py (in-process)"]
     E --> ES["score.py (in-process)"]
+    O --> OS["score.py (in-process)"]
     H --> HP["Podman (local)"]
     H --> HK["Kubernetes / OpenShift"]
+    O --> OG["OpenShell Gateway"]
     HP --> RB["reward.json (in-container)"]
     HK --> RB
+    OG --> OC["OpenClaw agent"]
 ```
 
 !!! warning "The `--runner` flag selects the *backend*, not the agent"
     This name is genuinely confusing. There are two distinct concepts:
 
     - **`runner.type`** *(in `eval.yaml`)* — the **agent runtime**: `claude-code`,
-      `cli`, or `responses-api`. See [Runners](runners.md).
+      `cli`, `codex`, `openclaw`, or `responses-api`. See [Runners](runners.md).
     - **`--runner`** *(CLI flag on `/eval-run`)* — the **execution backend**:
-      `local` (default), `harbor`, or `evalhub`.
+      `local` (default), `harbor`, `openshell`, or `evalhub`.
 
     So `/eval-run --runner harbor` runs your configured `runner.type` agent
     *inside Harbor containers*. The two settings are orthogonal.
@@ -121,6 +126,15 @@ regardless of backend. What differs is only *where* the judge engine runs.
     codex, …) via Podman or Kubernetes/OpenShift.
 
     [:octicons-arrow-right-24: Harbor guide](../guides/harbor.md)
+
+-   :material-shield-lock: **OpenShell**
+
+    ---
+
+    Policy-enforced sandboxes with Landlock filesystem and network egress
+    control. OpenClaw agent with trajectory capture.
+
+    [:octicons-arrow-right-24: OpenShell guide](../guides/openshell.md)
 
 -   :material-server-network: **EvalHub**
 

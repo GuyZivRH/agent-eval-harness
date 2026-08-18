@@ -27,10 +27,12 @@ flowchart TD
     C["eval.yaml → runner.type"] --> R{RUNNERS registry}
     R -->|claude-code| CC["ClaudeCodeRunner<br/>claude --print"]
     R -->|codex| CX["CodexRunner<br/>codex exec"]
+    R -->|openclaw| OC["OpenClawRunner<br/>openclaw agent exec"]
     R -->|cli| CLI["CliRunner<br/>arbitrary command"]
     R -->|responses-api| RA["ResponsesAPIRunner<br/>OpenAI Responses API"]
     CC --> RR["RunResult"]
     CX --> RR
+    OC --> RR
     CLI --> RR
     RA --> RR
     RR --> S["collect → judges → report → MLflow"]
@@ -45,6 +47,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `claude-code` | `ClaudeCodeRunner` | Claude Code CLI (`claude --print`) | **Default.** Full-fidelity: stream-json traces, budget cap, tool interception, subagent capture, permission-denial detection |
 | `codex` | `CodexRunner` | Codex CLI (`codex exec --json`) | Native Codex execution with copied skill staging, sandbox-mode mapping, and JSONL usage parsing |
+| `openclaw` | `OpenClawRunner` | OpenClaw CLI (`openclaw agent exec --json`) | Trajectory capture via `--state-dir`, JSON usage envelope, supports `--runner openshell` |
 | `cli` | `CliRunner` | Any command you provide | Opaque: harness only sees exit code, stdout/stderr, and an optional `metrics.json` |
 | `responses-api` | `ResponsesAPIRunner` | OpenAI Responses API (Shell tool + Skills API) | Apples-to-apples cross-runtime comparison; needs `pip install agent-eval-harness[openai]` |
 

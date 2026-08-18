@@ -315,11 +315,12 @@ ConfigMaps carry the project-specific content.
 
 ## OpenShell runner (`--runner openshell`)
 
-When `--runner openshell` is specified, **skip Steps 2–6** (workspace through report)
-and invoke the OpenShell backend directly. The backend handles the full pipeline
-internally: workspace staging, sandbox lifecycle (OpenShell), OpenClaw execution,
-artifact collection, scoring, and report generation. Steps 7+ (pairwise, MLflow)
-still run after the backend completes.
+When `--runner openshell` is specified, **skip Steps 2–6** and invoke the OpenShell
+backend directly. The backend handles workspace staging, sandbox lifecycle,
+OpenClaw execution, artifact collection, scoring, and report generation in one
+call. The output is a standard `run_result.json` + `summary.yaml` + `report.html` —
+then continue with **Step 6 pairwise** (if `--baseline`) and **Step 8 (MLflow)**
+as normal.
 
 ```bash
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR/../..}"
@@ -352,7 +353,6 @@ Judges can access this via `outputs["trajectory"]` if configured in `outputs:`.
 ### v1 scope
 
 - Prompt mode only (skill mode deferred)
-- `str.format()` templates (Jinja `{{ input.* }}` deferred)
 - `system_prompt` and `max_budget_usd` ignored with warning
 
 ## Rules
