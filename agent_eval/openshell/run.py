@@ -577,6 +577,7 @@ async def _run_case(
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
 
+            # OpenShell nests directory uploads: local case dir → /sandbox/<case_id>/
             await sandbox.upload(name, staged_case, "/sandbox")
 
             input_yaml_path = staged_case / "input.yaml"
@@ -587,9 +588,45 @@ async def _run_case(
 
             # Resolve prompt template (Jinja2 or str.format)
             prompt = _resolve_prompt(config, input_yaml)
+            system_prompt = getattr(config.runner, "system_prompt", None)
+            if system_prompt and str(system_prompt).strip():
+                # OpenClaw agent exec has no --append-system-prompt; prepend.
+                prompt = f"{str(system_prompt).strip()}\n\n{prompt}"
+
+            # Optional host-side Crabline seed (annotations.crabline_seed)
+            from agent_eval.openshell.crabline_seed import (
+                load_case_annotations,
+                seed_crabline_for_case,
+            )
+
+            case_annotations = load_case_annotations(config, case_id)
+            try:
+                seed_meta = seed_crabline_for_case(case_annotations)
+            except Exception as e:
+                logger.error("Crabline seed failed for %s: %s", case_id, e)
+                raise
+            if seed_meta:
+                seed_path = case_output / "crabline-seed.json"
+                seed_path.write_text(json.dumps(seed_meta, indent=2), encoding="utf-8")
+                # Non-secret metadata for the agent (not the seeded text/code).
+                sandbox_env_extra = {
+                    "CRABLINE_SEED_CHANNEL": str(seed_meta.get("channel") or ""),
+                    "CRABLINE_SEED_TS": str(seed_meta.get("ts") or ""),
+                    "CRABLINE_CASE_USER": str(
+                        case_annotations.get("slack_user")
+                        or (case_annotations.get("crabline_seed") or {}).get("users")
+                        or ""
+                    ),
+                }
+            else:
+                slack_user = str(case_annotations.get("slack_user") or "")
+                sandbox_env_extra = (
+                    {"CRABLINE_CASE_USER": slack_user} if slack_user else {}
+                )
 
             # Build env to forward to sandbox (API keys + config env)
             sandbox_env = _sandbox_env(config)
+            sandbox_env.update({k: v for k, v in sandbox_env_extra.items() if v})
 
             # Build command based on runner type
             # Default depends on whether providers are configured (OpenClaw) or not (Claude Code)
@@ -600,12 +637,19 @@ async def _run_case(
             else:
                 runner_type = "claude-code"  # Default for simple cases
             if runner_type == "cli":
-                # CLI runner: use command from config with {args} substitution
+                # CLI runner: use command from config with {args}/{case_id}
+                # substitution. Use /bin/sh (not bash) — Quay OpenClaw and
+                # many minimal images do not ship bash (exit 127).
+                # Case files upload to /sandbox/<case_id>/ (OpenShell nests dirs).
                 cli_command = config.runner.command
                 if cli_command:
-                    # Substitute {args} with prompt
-                    cli_command = cli_command.replace("{args}", prompt)
-                    cmd = ["bash", "-c", cli_command]
+                    if isinstance(cli_command, list):
+                        cli_command = " ".join(cli_command)
+                    cli_command = (
+                        cli_command.replace("{args}", prompt)
+                        .replace("{case_id}", case_id)
+                    )
+                    cmd = ["/bin/sh", "-c", cli_command]
                     stdin_data = None
                 else:
                     raise ValueError("CLI runner requires 'command' in runner config")
@@ -734,7 +778,17 @@ async def _run_case(
                             name, f"/sandbox/{output.path}", staged_case / output.path
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to download {output.path}: {e}")
+                        # OpenClaw prompt cases often never create /sandbox/output;
+                        # AEH writes response.txt from the exec envelope on the host.
+                        err = str(e)
+                        if "No such file or directory" in err or "failed to resolve" in err:
+                            logger.info(
+                                "No sandbox %s to download for %s (ok for openclaw)",
+                                output.path,
+                                case_id,
+                            )
+                        else:
+                            logger.warning(f"Failed to download {output.path}: {e}")
 
             # Parse output based on runner type
             if runner_type == "openclaw":
@@ -780,6 +834,13 @@ async def _run_case(
                     "response_text": result.stdout,
                     "stderr": result.stderr,
                 }
+                # Ensure judges/collect see a response even if sandbox
+                # did not create outputs.path (e.g. CLI stdout-only).
+                host_output = staged_case / "output"
+                host_output.mkdir(exist_ok=True)
+                response_file = host_output / "response.txt"
+                if not response_file.exists() or not response_file.read_text().strip():
+                    response_file.write_text(result.stdout or "")
 
             with open(case_output / "run_result.json", "w") as f:
                 json.dump(case_result, f, indent=2)

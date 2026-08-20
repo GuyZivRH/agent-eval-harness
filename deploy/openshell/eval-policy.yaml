@@ -81,3 +81,19 @@ network_policies:
       - path: /usr/local/bin/node
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Host-side Crabline Slack mock (AEH OpenClaw channel eval)
+  # Bind Crabline with: --host 0.0.0.0 --port 8787
+  crabline_slack:
+    name: crabline-slack-host
+    endpoints:
+      - host: host.openshell.internal
+        port: 8787
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+      - path: /usr/bin/curl

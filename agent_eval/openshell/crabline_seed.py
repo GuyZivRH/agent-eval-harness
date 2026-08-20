@@ -1,0 +1,129 @@
+"""Host-side Crabline seeding for OpenShell cases.
+
+Cases that need Slack state *before* the agent runs declare
+``annotations.crabline_seed`` (users + text). AEH posts that message via the
+host loopback API (not ``host.openshell.internal``) so history/threads exist
+when OpenClaw starts.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any, Optional
+
+import yaml
+
+logger = logging.getLogger(__name__)
+
+
+def _api_root() -> str:
+    explicit = os.environ.get("CRABLINE_API_URL") or os.environ.get("SLACK_API_URL_HOST")
+    if explicit:
+        return explicit if explicit.endswith("/") else explicit + "/"
+    # Host-side default (sandbox uses host.openshell.internal).
+    return "http://127.0.0.1:8787/api/"
+
+
+def _bot_token() -> str:
+    token = os.environ.get("SLACK_BOT_TOKEN") or ""
+    if token:
+        return token
+    ready = os.environ.get("CRABLINE_READY_FILE", "")
+    if ready and Path(ready).is_file():
+        data = json.loads(Path(ready).read_text(encoding="utf-8"))
+        return str(data.get("botToken") or "")
+    # Common spike path
+    default_ready = Path(".tmp/crabline/ready/slack-server.json")
+    if default_ready.is_file():
+        data = json.loads(default_ready.read_text(encoding="utf-8"))
+        return str(data.get("botToken") or "")
+    return ""
+
+
+def _slack_form(api_root: str, method: str, token: str, fields: dict) -> dict:
+    url = f"{api_root}{method}"
+    data = urllib.parse.urlencode(fields).encode()
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+
+def load_case_annotations(config, case_id: str) -> dict:
+    """Load annotations.yaml for a case from the dataset path."""
+    try:
+        dataset_root = config.resolve_path(config.dataset.path)
+    except Exception:
+        return {}
+    path = Path(dataset_root) / case_id / "annotations.yaml"
+    if not path.is_file():
+        return {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def seed_crabline_for_case(
+    annotations: dict,
+    *,
+    api_root: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    """Post annotations.crabline_seed to Crabline. Return seed metadata or None."""
+    seed = (annotations or {}).get("crabline_seed")
+    if not seed:
+        return None
+    text = (seed.get("text") or "").strip()
+    if not text:
+        raise ValueError("annotations.crabline_seed.text is required")
+    users = (seed.get("users") or "UCANARY01").strip()
+    api_root = api_root or _api_root()
+    token = token or _bot_token()
+    if not token:
+        raise RuntimeError(
+            "SLACK_BOT_TOKEN (or Crabline ready file) required to seed Crabline"
+        )
+
+    opened = _slack_form(api_root, "conversations.open", token, {"users": users})
+    if not opened.get("ok"):
+        raise RuntimeError(f"conversations.open failed: {opened}")
+    channel = (opened.get("channel") or {}).get("id")
+    if not channel:
+        raise RuntimeError(f"conversations.open missing channel id: {opened}")
+
+    posted = _slack_form(
+        api_root,
+        "chat.postMessage",
+        token,
+        {"channel": channel, "text": text},
+    )
+    if not posted.get("ok"):
+        raise RuntimeError(f"chat.postMessage seed failed: {posted}")
+
+    ts = posted.get("ts") or (posted.get("message") or {}).get("ts")
+    result = {
+        "ok": True,
+        "users": users,
+        "channel": channel,
+        "ts": ts,
+        "text": text,
+        "api_root": api_root,
+    }
+    logger.info(
+        "Crabline seed: channel=%s ts=%s text=%r",
+        channel,
+        ts,
+        text[:80],
+    )
+    return result
