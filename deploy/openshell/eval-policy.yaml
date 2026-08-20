@@ -97,3 +97,33 @@ network_policies:
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
       - path: /usr/bin/curl
+
+  # Host-side smolclaw Gmail mock (default :8001)
+  smolclaw_gmail:
+    name: smolclaw-gmail-host
+    endpoints:
+      - host: host.openshell.internal
+        port: 8001
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Host-side smolclaw Calendar mock (default :8002)
+  smolclaw_gcal:
+    name: smolclaw-gcal-host
+    endpoints:
+      - host: host.openshell.internal
+        port: 8002
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs

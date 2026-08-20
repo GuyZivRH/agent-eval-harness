@@ -593,13 +593,15 @@ async def _run_case(
                 # OpenClaw agent exec has no --append-system-prompt; prepend.
                 prompt = f"{str(system_prompt).strip()}\n\n{prompt}"
 
-            # Optional host-side Crabline seed (annotations.crabline_seed)
+            # Optional host-side seeds (Crabline Slack / smolclaw Gmail|Calendar)
             from agent_eval.openshell.crabline_seed import (
                 load_case_annotations,
                 seed_crabline_for_case,
             )
+            from agent_eval.openshell.smolclaw_seed import seed_smolclaw_for_case
 
             case_annotations = load_case_annotations(config, case_id)
+            sandbox_env_extra: dict[str, str] = {}
             try:
                 seed_meta = seed_crabline_for_case(case_annotations)
             except Exception as e:
@@ -609,20 +611,44 @@ async def _run_case(
                 seed_path = case_output / "crabline-seed.json"
                 seed_path.write_text(json.dumps(seed_meta, indent=2), encoding="utf-8")
                 # Non-secret metadata for the agent (not the seeded text/code).
-                sandbox_env_extra = {
-                    "CRABLINE_SEED_CHANNEL": str(seed_meta.get("channel") or ""),
-                    "CRABLINE_SEED_TS": str(seed_meta.get("ts") or ""),
-                    "CRABLINE_CASE_USER": str(
-                        case_annotations.get("slack_user")
-                        or (case_annotations.get("crabline_seed") or {}).get("users")
-                        or ""
-                    ),
-                }
+                sandbox_env_extra.update(
+                    {
+                        "CRABLINE_SEED_CHANNEL": str(seed_meta.get("channel") or ""),
+                        "CRABLINE_SEED_TS": str(seed_meta.get("ts") or ""),
+                        "CRABLINE_CASE_USER": str(
+                            case_annotations.get("slack_user")
+                            or (case_annotations.get("crabline_seed") or {}).get("users")
+                            or ""
+                        ),
+                    }
+                )
             else:
                 slack_user = str(case_annotations.get("slack_user") or "")
-                sandbox_env_extra = (
-                    {"CRABLINE_CASE_USER": slack_user} if slack_user else {}
+                if slack_user:
+                    sandbox_env_extra["CRABLINE_CASE_USER"] = slack_user
+
+            try:
+                smol_meta = seed_smolclaw_for_case(case_annotations)
+            except Exception as e:
+                logger.error("smolclaw seed failed for %s: %s", case_id, e)
+                raise
+            if smol_meta:
+                (case_output / "smolclaw-seed.json").write_text(
+                    json.dumps(smol_meta, indent=2), encoding="utf-8"
                 )
+                kind = str(smol_meta.get("kind") or "")
+                if kind == "calendar" and smol_meta.get("event_id"):
+                    sandbox_env_extra["SMOLCLAW_SEED_EVENT_ID"] = str(
+                        smol_meta["event_id"]
+                    )
+                if kind == "gmail" and smol_meta.get("message_id"):
+                    sandbox_env_extra["SMOLCLAW_SEED_MESSAGE_ID"] = str(
+                        smol_meta["message_id"]
+                    )
+                    if smol_meta.get("thread_id"):
+                        sandbox_env_extra["SMOLCLAW_SEED_THREAD_ID"] = str(
+                            smol_meta["thread_id"]
+                        )
 
             # Build env to forward to sandbox (API keys + config env)
             sandbox_env = _sandbox_env(config)

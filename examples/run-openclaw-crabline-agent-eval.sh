@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# Phase 2: AEH → OpenShell → Quay OpenClaw agent → host Crabline.
-# Agent uses exec+curl (not channels.slack). Scores Crabline recorder.
+# AEH → OpenShell → Quay OpenClaw agent → host Crabline + smolclaw.
+# Agent uses exec+curl. Scores Crabline recorder / smolclaw API state.
 #
 # Prerequisites (leave running in other terminals):
 #   ./examples/start-crabline-slack.sh
+#   ./examples/start-smolclaw.sh
 #   .eval-venv/bin/python examples/claude-vertex-proxy.py   # :8000 → inference.local
 #
 # Usage:
 #   ./examples/run-openclaw-crabline-agent-eval.sh
+#   ./examples/run-openclaw-crabline-agent-eval.sh --cases case-004 case-005
 #   ./examples/run-openclaw-crabline-agent-eval.sh --keep-sandbox
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 READY="${ROOT}/.tmp/crabline/ready/slack-server.json"
 RECORDER="${ROOT}/.tmp/crabline/recorders/slack.jsonl"
+SMOL_READY="${ROOT}/.tmp/smolclaw/ready.json"
 EVAL_YAML="${ROOT}/eval/openclaw-crabline-agent/eval.yaml"
 BOOTSTRAP="${ROOT}/examples/bootstrap-openclaw-crabline-agent-eval.sh"
 PY="${ROOT}/.eval-venv/bin/python"
@@ -24,6 +27,18 @@ if [[ ! -x "${PY}" ]]; then
 fi
 if [[ ! -f "${READY}" ]]; then
   echo "error: missing ${READY} — run ./examples/start-crabline-slack.sh first" >&2
+  exit 1
+fi
+if [[ ! -f "${SMOL_READY}" ]]; then
+  echo "error: missing ${SMOL_READY} — run ./examples/start-smolclaw.sh first" >&2
+  exit 1
+fi
+if ! curl -sf -m 2 http://127.0.0.1:8001/gmail/v1/users/me/profile >/dev/null; then
+  echo "error: smolclaw Gmail not healthy on :8001 — run ./examples/start-smolclaw.sh" >&2
+  exit 1
+fi
+if ! curl -sf -m 2 http://127.0.0.1:8002/calendar/v3/users/me/calendarList >/dev/null; then
+  echo "error: smolclaw Calendar not healthy on :8002 — run ./examples/start-smolclaw.sh" >&2
   exit 1
 fi
 if [[ ! -f "${EVAL_YAML}" ]]; then
@@ -73,6 +88,8 @@ PY
 export CRABLINE_RECORDER="${RECORDER}"
 export CRABLINE_READY_FILE="${READY}"
 export CRABLINE_API_URL="${CRABLINE_API_URL:-http://127.0.0.1:8787/api/}"
+export SMOLCLAW_GMAIL_URL="${SMOLCLAW_GMAIL_URL:-http://127.0.0.1:8001/gmail/v1/}"
+export SMOLCLAW_GCAL_URL="${SMOLCLAW_GCAL_URL:-http://127.0.0.1:8002/calendar/v3/}"
 export OPENSHELL_GATEWAY_ENDPOINT="${OPENSHELL_GATEWAY_ENDPOINT:-https://localhost:17670}"
 export AGENT_EVAL_OPENSHELL_IMAGE="${AGENT_EVAL_OPENSHELL_IMAGE:-quay.io/aipcc/base-images/agentic/openclaw:latest}"
 export AGENT_EVAL_OPENSHELL_POLICY="${AGENT_EVAL_OPENSHELL_POLICY:-${ROOT}/deploy/openshell/eval-policy.yaml}"
@@ -83,8 +100,9 @@ RUN_ID="${RUN_ID:-crabline-agent-$(date +%Y%m%d-%H%M%S)}"
 MODEL="${MODEL:-inference/claude-sonnet-4}"
 
 echo "SLACK_BOT_TOKEN set; recorder=${CRABLINE_RECORDER}"
+echo "smolclaw gmail=${SMOLCLAW_GMAIL_URL} gcal=${SMOLCLAW_GCAL_URL}"
 echo "RUN_ID=${RUN_ID} model=${MODEL}"
-echo "stack: AEH → OpenShell → Quay OpenClaw agent exec → Crabline"
+echo "stack: AEH → OpenShell → Quay OpenClaw → Crabline + smolclaw"
 
 cd "${ROOT}"
 "${PY}" -m agent_eval.openshell.run \

@@ -95,10 +95,15 @@ If either fails, re-run the e2e **Fresh `.eval-venv` install list**, then:
 .eval-venv/bin/pip install fastapi uvicorn
 ```
 
-Crabline scorers / seed helpers live in `agent_eval.openshell` (stdlib + repo
-code). No extra pip package for Crabline itself.
+Fresh `.eval-venv` extras for this guide (after the e2e install list):
 
-### Node (Crabline CLI)
+```bash
+# Crabline: Node/npm (start-crabline-slack.sh installs @openclaw/crabline under .tmp/)
+# smolclaw Gmail/Calendar mocks — install from GitHub (NOT PyPI "smolclaw"):
+.eval-venv/bin/pip install 'git+https://github.com/bingran-you/smolclaw.git'
+# Or just run ./examples/start-smolclaw.sh (installs if missing)
+```
+
 
 `examples/start-crabline-slack.sh` installs `@openclaw/crabline` under
 `.tmp/crabline/` via npm (once). You need a working `npm` / Node on the host:
@@ -171,7 +176,7 @@ or if `/tmp/claude_proxy.py` is an old non-tool build.
 
 ---
 
-## Part 2 — The three agent use cases
+## Part 2 — The agent use cases
 
 ### 2.0 Bootstrap the eval package (required on a fresh machine)
 
@@ -188,9 +193,7 @@ That writes:
 
 ```text
 eval/openclaw-crabline-agent/eval.yaml
-eval/openclaw-crabline-agent/cases/case-001/{input.yaml,annotations.yaml}
-eval/openclaw-crabline-agent/cases/case-002/{input.yaml,annotations.yaml}
-eval/openclaw-crabline-agent/cases/case-003/{input.yaml,annotations.yaml}
+eval/openclaw-crabline-agent/cases/case-001..005/{input.yaml,annotations.yaml}
 ```
 
 Re-running overwrites those demo files (safe; does not delete `eval/runs/`).
@@ -199,19 +202,27 @@ if `eval.yaml` is missing.
 
 Eval root: `eval/openclaw-crabline-agent/`
 
-| Case | Slack user (isolated DM) | Purpose | Agent must |
-|------|--------------------------|---------|------------|
-| **case-001** | `UCASE001` | Smoke post | `conversations.open` → `chat.postMessage` with marker |
-| **case-002** | `UCASE002` | Read then act | Open DM → `conversations.history` → post **code from history** + marker |
-| **case-003** | `UCASE003` | Threaded answer | Open DM → history → **threaded** `chat.postMessage` with answer `4` + marker |
+| Case | Mock | Purpose |
+|------|------|---------|
+| **case-001** | Crabline Slack (`UCASE001`) | Smoke: open DM + post marker |
+| **case-002** | Crabline Slack (`UCASE002`) | History → post code + marker |
+| **case-003** | Crabline Slack (`UCASE003`) | Threaded reply with answer `4` |
+| **case-004** | smolclaw Calendar | Find seeded code → create event with code + marker |
+| **case-005** | smolclaw Gmail | Find seeded code → send mail with code + marker |
 
-Each case uses its **own** Crabline DM user so `conversations.history` does not
-mix messages across cases. Secrets for 002/003 live in the **Slack seed text**
-and judge annotations — not in the agent prompt.
+Slack cases use isolated DM users. Gmail/Calendar cases seed needles via
+`annotations.smolclaw_seed` (host loopback) before the agent runs.
 
-Host seeding (002/003): annotations `crabline_seed` → AEH
-`agent_eval.openshell.crabline_seed` before the agent runs. Optional sandbox
-hints: `CRABLINE_SEED_CHANNEL`, `CRABLINE_SEED_TS`, `CRABLINE_CASE_USER`.
+### 2.0b Start smolclaw (Gmail + Calendar) — cases 004/005
+
+In addition to Crabline (`:8787`) and the Vertex proxy (`:8000`):
+
+```bash
+./examples/start-smolclaw.sh
+# Gmail  :8001   Calendar :8002
+# Installs bingran-you/smolclaw from GitHub into .eval-venv
+# (PyPI package name "smolclaw" is a different project — do not pip install that.)
+```
 
 ### case-001 — smoke marker
 
@@ -260,32 +271,55 @@ crabline_seed:
 Prompt (summary): reply in-thread (`thread_ts` = parent ts) with numeric answer
 and marker.
 
+### case-004 — Calendar (smolclaw)
+
+```yaml
+expected_text: "aeh-smolclaw-case-004-marker"
+expected_code: "CALENDAR-BLUE-9"
+smolclaw_kind: calendar
+smolclaw_seed:
+  kind: calendar
+  summary: "AEH Seed Confirm CALENDAR-BLUE-9"
+  description: "Action required: confirm with code CALENDAR-BLUE-9. …"
+```
+
+Agent lists primary calendar events, reads the code, creates a new event whose
+summary/description include the code + marker.
+
+### case-005 — Gmail (smolclaw)
+
+```yaml
+expected_text: "aeh-smolclaw-case-005-marker"
+expected_code: "MAIL-ORANGE-7"
+smolclaw_kind: gmail
+smolclaw_seed:
+  kind: gmail
+  subject: "Action required confirm with code MAIL-ORANGE-7"
+  body: "Please confirm with code MAIL-ORANGE-7. …"
+```
+
+Agent searches mail, reads the code, `messages/send`s a raw RFC822 whose
+subject/body include the code + marker.
+
 ---
 
 ## Part 3 — What we are checking
 
-Judges are **host-side** (Crabline recorder + AEH trajectory). No LLM judges in
-the default runner (`--no-llm-judges`).
+Judges are **host-side** (Crabline recorder / smolclaw API state + AEH trajectory).
+No LLM judges in the default runner (`--no-llm-judges`).
 
 | Judge | When | Passes when |
 |-------|------|-------------|
-| **crabline_accepted_post** | always | Recorder has an **accepted** `chat.postMessage` whose text contains `annotations.expected_text` |
-| **crabline_code_in_post** | `annotations.expected_code` set (002) | Same post (or matching posts) also contains the expected code (`ORANGE-7`) |
-| **crabline_threaded_answer** | `expect_thread_reply` (003) | Accepted post is a **thread reply** (`thread_ts` present) and text contains `expected_answer` (`4`) + marker |
-| **used_exec_tool** | always | Trajectory / tool_calls include a real `exec` (or shell-like) tool — not prose “I would curl…” |
+| **crabline_accepted_post** | `slack_user` set | Recorder has accepted `chat.postMessage` with `expected_text` |
+| **crabline_code_in_post** | Slack + `expected_code` | Post contains code + marker |
+| **crabline_threaded_answer** | `expect_thread_reply` | Threaded post with answer + marker |
+| **smolclaw_calendar_event** | `smolclaw_kind == calendar` | Primary calendar has event with code + marker |
+| **smolclaw_gmail_message** | `smolclaw_kind == gmail` | Gmail has message with code + marker |
+| **used_exec_tool** | always | Trajectory includes real `exec` |
 | **response_received** | always | Non-empty final agent response |
 
-Implementation: `agent_eval/openshell/crabline_score.py`. Matching recorder lines
-are copied to each case’s `output/crabline-hits.jsonl`.
-
-Thresholds in `eval.yaml` require **100%** pass rate on each judge that runs.
-
-Also captured (not scored as LLM rubrics):
-
-- `events.json` — AEH-normalized OpenClaw trajectory (`exec` + tool results)
-- `openclaw-trajectory-events.jsonl` — raw export when harvest succeeds
-- `crabline-seed.json` — host seed metadata (channel / ts) for 002/003
-
+Implementations: `agent_eval/openshell/crabline_score.py`,
+`agent_eval/openshell/smolclaw_score.py`.
 ---
 
 ## Part 4 — Bash runner (recommended)
@@ -308,12 +342,15 @@ What it does:
 ### 4.1 Run all three cases
 
 **Terminal A:** Crabline (`./examples/start-crabline-slack.sh`)  
-**Terminal B:** Vertex proxy (tool-aware)  
-**Terminal C:**
+**Terminal B:** smolclaw (`./examples/start-smolclaw.sh`)  
+**Terminal C:** Vertex proxy (tool-aware)  
+**Terminal D:**
 
 ```bash
 cd /Users/gziv/Dev/agent-eval-harness
 ./examples/run-openclaw-crabline-agent-eval.sh
+# Gmail/Calendar only:
+#   ./examples/run-openclaw-crabline-agent-eval.sh --cases case-004 case-005
 ```
 
 Optional flags are passed through to AEH:
@@ -499,12 +536,15 @@ kill "$(cat .tmp/crabline/serve.pid)" 2>/dev/null
 |------|------|
 | [openshell-openclaw-e2e.md](./openshell-openclaw-e2e.md) | Prerequisite stack (OpenShell + Quay + Vertex proxy) |
 | `examples/start-crabline-slack.sh` | Host Crabline Slack mock |
-| `examples/bootstrap-openclaw-crabline-agent-eval.sh` | Generate agent `eval.yaml` + cases |
+| `examples/start-smolclaw.sh` | Host smolclaw Gmail (:8001) + Calendar (:8002) |
+| `examples/bootstrap-openclaw-crabline-agent-eval.sh` | Generate agent `eval.yaml` + cases 001–005 |
 | `examples/bootstrap-openclaw-crabline-eval.sh` | Generate Phase 1.5 CLI eval package |
 | `examples/run-openclaw-crabline-agent-eval.sh` | Full agent suite runner |
 | `examples/run-openclaw-crabline-eval.sh` | Phase 1.5 CLI (no agent) Crabline canary suite |
 | `examples/claude-vertex-proxy.py` | Tool-aware Vertex proxy |
 | `eval/openclaw-crabline-agent/` | Generated locally (not committed) |
+| `agent_eval/openshell/smolclaw_seed.py` | Host Gmail/Calendar needles |
+| `agent_eval/openshell/smolclaw_score.py` | Gmail/Calendar judges |
 | `agent_eval/openshell/run.py` | AEH OpenShell orchestrator (+ seed hook) |
 | `agent_eval/openshell/crabline_seed.py` | Host seed for 002/003 |
 | `agent_eval/openshell/crabline_score.py` | Recorder judges |
