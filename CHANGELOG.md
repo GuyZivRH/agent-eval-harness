@@ -1,3 +1,11 @@
+## [1.39.5](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.4...v1.39.5) (2026-08-20)
+
+
+### Bug Fixes
+
+* **claude-code:** report only the confirmed import failure; force bootstrap failure in the hook test ([6f28584](https://github.com/opendatahub-io/agent-eval-harness/commit/6f2858438c128d9c29d6f9ca4808a04d89e096cd))
+* **claude-code:** stop losing interception evidence across the hook and telemetry path ([a9f403b](https://github.com/opendatahub-io/agent-eval-harness/commit/a9f403bedf03f0d5afbd213fa631220a4265a3e8))
+
 ## [1.39.4](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.3...v1.39.4) (2026-08-18)
 
 
