@@ -36,7 +36,7 @@ class TestBuildOpenclawArgv:
         assert "--model" in cmd
         assert "anthropic/claude-sonnet-4-6" in cmd
         assert "--auth-env-only" in cmd
-        assert cmd[-2:] == ["--message-file", "-"]
+        assert "--config" not in cmd
 
     def test_with_cwd(self):
         cmd = build_openclaw_argv(model="m", cwd=Path("/workspace"))
@@ -66,6 +66,25 @@ class TestBuildOpenclawArgv:
         cmd = build_openclaw_argv(model="m", auth_env_only=False)
         assert "--auth-env-only" not in cmd
 
+    def test_with_config_path(self):
+        cmd = build_openclaw_argv(
+            model="inference/claude-sonnet-4",
+            auth_env_only=False,
+            config_path=Path("/sandbox/openclaw-eval.json"),
+        )
+        assert "--config" in cmd
+        idx = cmd.index("--config")
+        assert cmd[idx + 1] == "/sandbox/openclaw-eval.json"
+        assert "--auth-env-only" not in cmd
+
+    def test_config_path_rejects_auth_env_only(self):
+        with pytest.raises(ValueError, match="auth-env-only"):
+            build_openclaw_argv(
+                model="m",
+                auth_env_only=True,
+                config_path=Path("/sandbox/openclaw-eval.json"),
+            )
+
     def test_all_options(self):
         cmd = build_openclaw_argv(
             model="anthropic/claude-opus-4-6",
@@ -73,14 +92,15 @@ class TestBuildOpenclawArgv:
             timeout_s=600,
             effort="medium",
             state_dir=Path("/state"),
-            auth_env_only=True,
+            auth_env_only=False,
+            config_path=Path("/sandbox/openclaw-eval.json"),
         )
         assert "--cwd" in cmd
         assert "--timeout" in cmd
         assert "--thinking" in cmd
         assert "--state-dir" in cmd
-        assert "--auth-env-only" in cmd
-        assert "--message-file" in cmd
+        assert "--config" in cmd
+        assert "--auth-env-only" not in cmd
 
 
 class TestParseOpenclawEnvelope:

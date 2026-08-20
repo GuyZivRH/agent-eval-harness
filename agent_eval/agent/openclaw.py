@@ -31,37 +31,53 @@ def build_openclaw_argv(
     effort: Optional[str] = None,
     auth_env_only: bool = True,
     state_dir: Optional[Path] = None,
+    session_id: Optional[str] = None,
+    config_path: Optional[Path] = None,
 ) -> List[str]:
     """Build openclaw agent exec argv.
 
     Shared by OpenClawRunner (local) and openshell backend (in-sandbox).
 
     Args:
-        model: Model identifier (e.g. "anthropic/claude-sonnet-4-6").
+        model: Model identifier (e.g. "inference/claude-sonnet-4").
         cwd: Working directory for the agent.
         timeout_s: Timeout in seconds.
         effort: Thinking effort level (off|minimal|low|medium|high).
-        auth_env_only: Read API keys from env only, not config file (CI-safe).
-        state_dir: Directory to persist session state for trajectory capture.
-            Without this, OpenClaw deletes ephemeral state on exit.
+        auth_env_only: If True, use --auth-env-only (env keys only; skips
+            config entirely). Incompatible with ``config_path`` — OpenClaw
+            rejects pairing ``--auth-env-only`` with ``--config``.
+        state_dir: Existing state directory retained across the run.
+        session_id: Unused (exec mode doesn't use session IDs).
+        config_path: Path to openclaw.json (``--config``). Use this for
+            custom ``models.providers`` (e.g. inference.local); must set
+            ``auth_env_only=False``.
 
     Returns:
-        Command argv list for subprocess.
+        Command argv list for subprocess. Caller should append the prompt
+        as a positional argument.
     """
+    if config_path is not None and auth_env_only:
+        raise ValueError(
+            "openclaw rejects --auth-env-only with --config; "
+            "pass auth_env_only=False when using config_path"
+        )
+    # Use 'agent exec' for isolated headless runs (new format since 2026.7.x)
     cmd = ["openclaw", "agent", "exec", "--json"]
-    if cwd:
-        cmd.extend(["--cwd", str(cwd)])
+    if config_path is not None:
+        cmd.extend(["--config", str(config_path)])
     if model:
         cmd.extend(["--model", model])
     if timeout_s:
         cmd.extend(["--timeout", str(timeout_s)])
-    if effort:
+    if effort and effort in OPENCLAW_EFFORTS:
         cmd.extend(["--thinking", effort])
-    if state_dir:
+    if cwd:
+        cmd.extend(["--cwd", str(cwd)])
+    if state_dir is not None:
         cmd.extend(["--state-dir", str(state_dir)])
     if auth_env_only:
         cmd.append("--auth-env-only")
-    cmd.extend(["--message-file", "-"])
+    # Note: prompt is now a positional argument, added by caller
     return cmd
 
 
@@ -70,16 +86,48 @@ def _parse_openclaw_envelope(
 ) -> Tuple[Optional[dict], str]:
     """Parse OpenClaw JSON envelope.
 
+    OpenClaw with --json outputs a JSON object, but may have log lines before/after.
+    We extract the JSON by finding the first '{' and matching closing '}'.
+
     Returns:
         Tuple of (parsed_data, error_message). If JSON parsing fails,
         parsed_data is None and error_message contains stderr.
     """
+    stdout_str = stdout.decode(errors="replace") if isinstance(stdout, bytes) else stdout
+    stderr_str = stderr.decode(errors="replace") if isinstance(stderr, bytes) else stderr
+    
+    # Try direct JSON parse first
     try:
-        data = json.loads(stdout)
+        data = json.loads(stdout_str)
         error_msg = data.get("error", {}).get("message") or ""
-        return data, stderr.decode(errors="replace") + error_msg
+        return data, stderr_str + error_msg
     except json.JSONDecodeError:
-        return None, stderr.decode(errors="replace")
+        pass
+    
+    # Extract JSON object from mixed output (log lines + JSON)
+    try:
+        start = stdout_str.find('{')
+        if start == -1:
+            return None, stderr_str
+        
+        # Find matching closing brace
+        depth = 0
+        end = start
+        for i, c in enumerate(stdout_str[start:], start):
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        
+        json_str = stdout_str[start:end]
+        data = json.loads(json_str)
+        error_msg = data.get("error", {}).get("message") or ""
+        return data, stderr_str + error_msg
+    except (json.JSONDecodeError, ValueError):
+        return None, stderr_str
 
 
 def parse_openclaw_to_run_result(
@@ -124,6 +172,32 @@ def parse_openclaw_to_run_result(
     )
 
 
+def extract_openclaw_response(stdout: bytes) -> str:
+    """Extract the final response text from OpenClaw JSON output.
+    
+    Args:
+        stdout: Raw stdout bytes from openclaw process.
+        
+    Returns:
+        The response text, or empty string if not found.
+    """
+    data, _ = _parse_openclaw_envelope(stdout, b"")
+    if data is None:
+        return ""
+    
+    # Try meta.finalAssistantVisibleText first (most reliable)
+    meta = data.get("meta", {})
+    if meta.get("finalAssistantVisibleText"):
+        return meta["finalAssistantVisibleText"]
+    
+    # Fall back to payloads[0].text
+    payloads = data.get("payloads", [])
+    if payloads and payloads[0].get("text"):
+        return payloads[0]["text"]
+    
+    return ""
+
+
 def parse_openclaw_to_case_dict(
     stdout: bytes,
     stderr: bytes,
@@ -149,19 +223,59 @@ def parse_openclaw_to_case_dict(
             "token_usage": {"input": 0, "output": 0},
             "cost_usd": None,
             "num_turns": None,
+            "response_text": "",
             "stderr": error_msg,
         }
+
+    # Extract metadata from OpenClaw JSON structure.
+    # Quay / agent-exec envelope puts usage/model/turns at the top level;
+    # older session envelopes nest them under meta.agentMeta.
+    meta = data.get("meta", {})
+    agent_meta = meta.get("agentMeta", {})
+    context_status = agent_meta.get("contextBudgetStatus", {})
+
+    # Response text
+    response_text = meta.get("finalAssistantVisibleText", "") or data.get("final", "")
+    if not response_text:
+        payloads = data.get("payloads", [])
+        if payloads and payloads[0].get("text"):
+            response_text = payloads[0]["text"]
+
+    # Token usage: top-level (agent exec) → agentMeta → estimates
+    usage = (
+        data.get("usage")
+        or agent_meta.get("usage")
+        or agent_meta.get("lastCallUsage")
+        or {}
+    )
+    if usage:
+        input_tokens = usage.get("input", 0) or 0
+        output_tokens = usage.get("output", 0) or 0
+    else:
+        input_tokens = context_status.get("estimatedPromptTokens", 0) or 0
+        output_tokens = len(response_text) // 4 if response_text else 0
+
+    resolved_model = (
+        data.get("model")
+        or agent_meta.get("model")
+        or meta.get("executionTrace", {}).get("winnerModel")
+    )
+    num_turns = data.get("assistantTurns")
+    if num_turns is None:
+        num_turns = 1
 
     return {
         "exit_code": returncode,
         "duration_s": round(duration_s, 1),
         "token_usage": {
-            "input": data.get("usage", {}).get("input", 0),
-            "output": data.get("usage", {}).get("output", 0),
+            "input": input_tokens,
+            "output": output_tokens,
         },
         "cost_usd": data.get("costUsd"),
-        "num_turns": data.get("assistantTurns"),
-        "resolved_model": data.get("model"),
+        "num_turns": num_turns,
+        "resolved_model": resolved_model,
+        "response_text": response_text,
+        "stop_reason": meta.get("stopReason") or data.get("status"),
         "stderr": error_msg,
     }
 
@@ -280,11 +394,13 @@ class OpenClawRunner(EvalRunner):
         else:
             prompt = args or ""
 
+        # Prompt is now a positional argument in 'agent exec' format
+        cmd.append(prompt)
+
         env = {**os.environ, **self._env, **(extra_env or {})}
         start_time = time.monotonic()
 
         popen_kwargs = dict(
-            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=str(workspace),
@@ -295,9 +411,7 @@ class OpenClawRunner(EvalRunner):
 
         proc = subprocess.Popen(cmd, **popen_kwargs)
         try:
-            stdout, stderr = proc.communicate(
-                input=prompt.encode(), timeout=timeout_s
-            )
+            stdout, stderr = proc.communicate(timeout=timeout_s)
         except subprocess.TimeoutExpired:
             try:
                 if os.name != "nt":

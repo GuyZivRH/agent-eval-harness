@@ -22,6 +22,7 @@ filesystem_policy:
     - /etc
     - /bin
     - /sbin
+    - /opt/openclaw  # Required for Quay OpenClaw image (installed under /opt)
   read_write:
     - /sandbox
     - /tmp
@@ -66,3 +67,17 @@ network_policies:
     binaries:
       - path: /usr/bin/node
       - path: /usr/local/bin/node
+
+  # OpenShell inference relay (maps to host Claude/LiteLLM proxy via provider)
+  inference_local:
+    name: inference-local
+    endpoints:
+      - host: inference.local
+        port: 443
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
