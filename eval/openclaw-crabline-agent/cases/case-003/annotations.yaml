@@ -1,7 +1,0 @@
-expected_text: "aeh-crabline-agent-case-003-marker"
-expected_answer: "4"
-expect_thread_reply: true
-slack_user: UCASE003
-crabline_seed:
-  users: UCASE003
-  text: "Following our last call — what is 2+2? Please reply in this thread."

@@ -13,6 +13,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 READY="${ROOT}/.tmp/crabline/ready/slack-server.json"
 RECORDER="${ROOT}/.tmp/crabline/recorders/slack.jsonl"
 EVAL_YAML="${ROOT}/eval/openclaw-crabline/eval.yaml"
+BOOTSTRAP="${ROOT}/examples/bootstrap-openclaw-crabline-eval.sh"
 PY="${ROOT}/.eval-venv/bin/python"
 
 if [[ ! -x "${PY}" ]]; then
@@ -22,6 +23,10 @@ fi
 if [[ ! -f "${READY}" ]]; then
   echo "error: missing ${READY} — run ./examples/start-crabline-slack.sh first" >&2
   exit 1
+fi
+if [[ ! -f "${EVAL_YAML}" ]]; then
+  echo "Bootstrapping eval package (missing ${EVAL_YAML})…"
+  "${BOOTSTRAP}"
 fi
 
 # Export bot token for execution.env: $SLACK_BOT_TOKEN

@@ -173,6 +173,30 @@ or if `/tmp/claude_proxy.py` is an old non-tool build.
 
 ## Part 2 — The three agent use cases
 
+### 2.0 Bootstrap the eval package (required on a fresh machine)
+
+The case tree is **not** committed; generate it locally (same pattern as the
+e2e `bootstrap-openclaw-openshell-eval.sh`):
+
+```bash
+cd /Users/gziv/Dev/agent-eval-harness
+chmod +x examples/bootstrap-openclaw-crabline-agent-eval.sh
+./examples/bootstrap-openclaw-crabline-agent-eval.sh
+```
+
+That writes:
+
+```text
+eval/openclaw-crabline-agent/eval.yaml
+eval/openclaw-crabline-agent/cases/case-001/{input.yaml,annotations.yaml}
+eval/openclaw-crabline-agent/cases/case-002/{input.yaml,annotations.yaml}
+eval/openclaw-crabline-agent/cases/case-003/{input.yaml,annotations.yaml}
+```
+
+Re-running overwrites those demo files (safe; does not delete `eval/runs/`).
+`./examples/run-openclaw-crabline-agent-eval.sh` also bootstraps automatically
+if `eval.yaml` is missing.
+
 Eval root: `eval/openclaw-crabline-agent/`
 
 | Case | Slack user (isolated DM) | Purpose | Agent must |
@@ -475,10 +499,12 @@ kill "$(cat .tmp/crabline/serve.pid)" 2>/dev/null
 |------|------|
 | [openshell-openclaw-e2e.md](./openshell-openclaw-e2e.md) | Prerequisite stack (OpenShell + Quay + Vertex proxy) |
 | `examples/start-crabline-slack.sh` | Host Crabline Slack mock |
+| `examples/bootstrap-openclaw-crabline-agent-eval.sh` | Generate agent `eval.yaml` + cases |
+| `examples/bootstrap-openclaw-crabline-eval.sh` | Generate Phase 1.5 CLI eval package |
 | `examples/run-openclaw-crabline-agent-eval.sh` | Full agent suite runner |
 | `examples/run-openclaw-crabline-eval.sh` | Phase 1.5 CLI (no agent) Crabline canary suite |
 | `examples/claude-vertex-proxy.py` | Tool-aware Vertex proxy |
-| `eval/openclaw-crabline-agent/eval.yaml` | Cases + judges |
+| `eval/openclaw-crabline-agent/` | Generated locally (not committed) |
 | `agent_eval/openshell/run.py` | AEH OpenShell orchestrator (+ seed hook) |
 | `agent_eval/openshell/crabline_seed.py` | Host seed for 002/003 |
 | `agent_eval/openshell/crabline_score.py` | Recorder judges |

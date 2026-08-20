@@ -1,8 +1,0 @@
-expected_text: "aeh-crabline-agent-case-002-marker"
-expected_code: "ORANGE-7"
-slack_user: UCASE002
-crabline_seed:
-  users: UCASE002
-  text: >
-    Action required: confirm with code ORANGE-7.
-    Reply in this DM with that code (and your eval marker).
