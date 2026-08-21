@@ -1,3 +1,18 @@
+# [1.41.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.40.2...v1.41.0) (2026-08-21)
+
+
+### Bug Fixes
+
+* **hooks:** close the pidfile launch race and bound the Stop-guard scan ([6941771](https://github.com/opendatahub-io/agent-eval-harness/commit/6941771869155d43790cc7a0cbe3c31cb13b258e))
+* **hooks:** detect live executor via pidfile, not transcript parsing ([5ce1983](https://github.com/opendatahub-io/agent-eval-harness/commit/5ce1983c26b004b4a524b53751da75b9609e6c0b))
+* **hooks:** harden Stop guard state and transcript handling ([df06586](https://github.com/opendatahub-io/agent-eval-harness/commit/df0658618e16aa85b8e7dfea71344d129e7524de))
+* **stop-guard:** harden pid handling, escape hatch, and pidfile writes ([f7658b9](https://github.com/opendatahub-io/agent-eval-harness/commit/f7658b9afdb47a82fe7da5f5861173bcf8729c1c))
+
+
+### Features
+
+* **hooks:** add Stop guard to prevent background-kill empty-green evals ([8f97ba3](https://github.com/opendatahub-io/agent-eval-harness/commit/8f97ba310880a31279d45391a11ff65b59d1629f))
+
 ## [1.40.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.40.1...v1.40.2) (2026-08-21)
 
 
