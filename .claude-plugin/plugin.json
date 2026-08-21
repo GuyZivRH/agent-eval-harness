@@ -25,6 +25,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/eval_stop_guard.py\"",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }
