@@ -1,3 +1,11 @@
+## [1.40.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.40.0...v1.40.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **claude-code:** apply the billed-cost rule on the timeout path too ([7446181](https://github.com/opendatahub-io/agent-eval-harness/commit/74461819fa36141807d06f5eb00c84b99e4f23f7))
+* **claude-code:** stop mislabeling cases whose background tasks were killed ([e037a19](https://github.com/opendatahub-io/agent-eval-harness/commit/e037a196ce02607768b6dfe6c3b36afad81aeb23))
+
 # [1.40.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.39.5...v1.40.0) (2026-08-21)
 
 
