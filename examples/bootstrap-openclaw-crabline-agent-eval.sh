@@ -15,7 +15,8 @@ mkdir -p \
   "${EVAL_DIR}/cases/case-005" \
   "${EVAL_DIR}/cases/case-010" \
   "${EVAL_DIR}/cases/case-011" \
-  "${EVAL_DIR}/cases/case-012"
+  "${EVAL_DIR}/cases/case-012" \
+  "${EVAL_DIR}/cases/case-013"
 
 cat > "${EVAL_DIR}/eval.yaml" <<'EOF'
 # OpenClaw agent (Quay) → host mocks via exec+curl. AEH scores side effects.
@@ -31,6 +32,7 @@ cat > "${EVAL_DIR}/eval.yaml" <<'EOF'
 #   case-010 — Gmail READ: list inbox, extract action-item code from email
 #   case-011 — Gmail READ: search by sender, extract approval code
 #   case-012 — Gmail READ: read message thread, extract decision code
+#   case-013 — Gmail READ: list folders/labels and messages in folder, extract code
 name: openclaw-crabline-agent
 
 runner:
@@ -447,5 +449,36 @@ smolclaw_seed:
         — Carol
 EOF
 
-echo "Wrote ${EVAL_DIR}/eval.yaml and cases/case-001..005, case-010..012"
+# --- case-013: Gmail READ — list labels and read messages in folder ---
+cat > "${EVAL_DIR}/cases/case-013/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent mail or claim success without API JSON.
+
+  Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
+
+  Task:
+  1) GET ${GMAIL_API_URL}users/me/labels to list all available labels/folders
+  2) Look for messages in the "important" or "starred" label
+  3) GET ${GMAIL_API_URL}users/me/messages?labelIds=<label_id> to find messages in that label
+  4) Read the message in that label and extract the project tracking code
+  5) Final reply: include the exact project tracking code and the folder name
+
+  Do not guess the code — read it from messages in the labeled folder.
+EOF
+cat > "${EVAL_DIR}/cases/case-013/annotations.yaml" <<'EOF'
+expected_code: "PROJECT-LABEL-7392"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  subject: "Project tracking: Important milestone"
+  body: >
+    This is an important project tracking email.
+    The project tracking code is: PROJECT-LABEL-7392
+
+    Please mark this as important for future reference.
+EOF
+
+echo "Wrote ${EVAL_DIR}/eval.yaml and cases/case-001..005, case-010..013"
 ls -la "${EVAL_DIR}/eval.yaml" "${EVAL_DIR}/cases"/case-*/{input,annotations}.yaml

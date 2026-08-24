@@ -193,7 +193,7 @@ That writes:
 
 ```text
 eval/openclaw-crabline-agent/eval.yaml
-eval/openclaw-crabline-agent/cases/case-001..005,010..012/{input.yaml,annotations.yaml}
+eval/openclaw-crabline-agent/cases/case-001..005,010..013/{input.yaml,annotations.yaml}
 ```
 
 Re-running overwrites those demo files (safe; does not delete `eval/runs/`).
@@ -212,6 +212,7 @@ Eval root: `eval/openclaw-crabline-agent/`
 | **case-010** | smolclaw Gmail (READ) | List inbox → extract action-item code |
 | **case-011** | smolclaw Gmail (READ) | Search by sender → extract approval code |
 | **case-012** | smolclaw Gmail (READ) | Read message thread → extract decision code |
+| **case-013** | smolclaw Gmail (READ) | List labels/folders → read messages in folder → extract code |
 
 Slack cases use isolated DM users. Gmail/Calendar cases seed needles via
 `annotations.smolclaw_seed` (host loopback) before the agent runs.
@@ -363,7 +364,26 @@ Seeds three messages as a thread (using `smolclaw_seed.messages` list).
 Agent reads the thread, summarizes the discussion, extracts the decision code.
 Judge checks the response text.
 
----
+### case-013 — Gmail READ: list labels and read messages in folder
+
+```yaml
+expected_code: "PROJECT-LABEL-7392"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  subject: "Project tracking: Important milestone"
+  body: >
+    This is an important project tracking email.
+    The project tracking code is: PROJECT-LABEL-7392
+
+    Please mark this as important for future reference.
+```
+
+Agent lists available Gmail labels (`GET users/me/labels`), finds messages in the
+"important" or "starred" label (`GET users/me/messages?labelIds=<label_id>`), reads
+the message in that label, and extracts the project tracking code. Judge checks the
+response text.
 
 ## Part 3 — What we are checking
 
@@ -383,7 +403,7 @@ No LLM judges in the default runner (`--no-llm-judges`).
 
 Implementations: `agent_eval/openshell/crabline_score.py`,
 `agent_eval/openshell/smolclaw_score.py`.
----
+
 
 ## Part 4 — Bash runner (recommended)
 
@@ -414,6 +434,8 @@ cd /Users/gziv/Dev/agent-eval-harness
 ./examples/run-openclaw-crabline-agent-eval.sh
 # Gmail/Calendar only:
 #   ./examples/run-openclaw-crabline-agent-eval.sh --cases case-004 case-005
+# Gmail READ only:
+#   ./examples/run-openclaw-crabline-agent-eval.sh --cases case-010 case-011 case-012 case-013
 ```
 
 Optional flags are passed through to AEH:
@@ -537,6 +559,7 @@ Healthy patterns:
 | 010 | `users/me/messages` → `users/me/messages/<id>?format=full` (read only) |
 | 011 | `users/me/messages?q=from:ops-alert` → `messages/<id>?format=full` |
 | 012 | `users/me/messages` → multiple `messages/<id>?format=full` (thread) |
+| 013 | `users/me/labels` → `users/me/messages?labelIds=<id>` → `messages/<id>?format=full` |
 
 ### 5.3 Crabline recorder hits
 

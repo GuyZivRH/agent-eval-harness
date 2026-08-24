@@ -179,7 +179,7 @@ def _seed_gmail_thread(seed: dict, messages: list[dict]) -> dict[str, Any]:
         "message_id": message_ids[-1],
         "message_ids": message_ids,
         "thread_id": thread_id,
-        "subject": messages[0].get("subject", ""),
+        "subject": messages[-1].get("subject", ""),
         "api_root": root,
     }
     logger.info(
