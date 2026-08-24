@@ -103,7 +103,24 @@ def _rfc822_raw(*, subject: str, body: str, to: str, frm: str) -> str:
     return base64.urlsafe_b64encode(msg.encode()).decode().rstrip("=")
 
 
+def _import_one_gmail(
+    root: str, user: str, raw: str, *, thread_id: Optional[str] = None,
+) -> dict:
+    """Import a single message into the mock. Returns the API response dict."""
+    payload: dict[str, Any] = {"raw": raw, "labelIds": ["INBOX", "UNREAD"]}
+    if thread_id:
+        payload["threadId"] = thread_id
+    try:
+        return _http_json("POST", f"{root}users/{user}/messages/import", payload)
+    except RuntimeError:
+        return _http_json("POST", f"{root}users/{user}/messages/send", payload)
+
+
 def _seed_gmail(seed: dict) -> dict[str, Any]:
+    messages = seed.get("messages")
+    if messages and isinstance(messages, list):
+        return _seed_gmail_thread(seed, messages)
+
     subject = (seed.get("subject") or "").strip()
     body = (seed.get("body") or "").strip()
     if not subject:
@@ -114,19 +131,7 @@ def _seed_gmail(seed: dict) -> dict[str, Any]:
 
     root = _gmail_root()
     raw = _rfc822_raw(subject=subject, body=body or subject, to=to, frm=frm)
-    # Prefer import (inbound-style) when available; fall back to send.
-    try:
-        posted = _http_json(
-            "POST",
-            f"{root}users/{user}/messages/import",
-            {"raw": raw, "labelIds": ["INBOX", "UNREAD"]},
-        )
-    except RuntimeError:
-        posted = _http_json(
-            "POST",
-            f"{root}users/{user}/messages/send",
-            {"raw": raw},
-        )
+    posted = _import_one_gmail(root, user, raw)
 
     result = {
         "ok": True,
@@ -140,6 +145,47 @@ def _seed_gmail(seed: dict) -> dict[str, Any]:
         "smolclaw gmail seed: id=%s subject=%r",
         result["message_id"],
         subject[:80],
+    )
+    return result
+
+
+def _seed_gmail_thread(seed: dict, messages: list[dict]) -> dict[str, Any]:
+    """Seed multiple messages as a single thread."""
+    if not messages:
+        raise ValueError("smolclaw_seed.messages list is empty")
+    user = (seed.get("user") or "me").strip()
+    root = _gmail_root()
+    thread_id: Optional[str] = None
+    message_ids: list[str] = []
+
+    for msg in messages:
+        frm = (msg.get("from") or "aeh-seed@example.com").strip()
+        to = (msg.get("to") or "me").strip()
+        subject = (msg.get("subject") or "").strip()
+        body = (msg.get("body") or subject).strip()
+        if not subject:
+            raise ValueError("each message in smolclaw_seed.messages needs a subject")
+        raw = _rfc822_raw(subject=subject, body=body, to=to, frm=frm)
+        posted = _import_one_gmail(root, user, raw, thread_id=thread_id)
+        mid = posted.get("id") or ""
+        message_ids.append(mid)
+        if thread_id is None:
+            thread_id = posted.get("threadId")
+        logger.info("smolclaw gmail thread seed: id=%s subject=%r", mid, subject[:80])
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "kind": "gmail",
+        "message_id": message_ids[-1],
+        "message_ids": message_ids,
+        "thread_id": thread_id,
+        "subject": messages[0].get("subject", ""),
+        "api_root": root,
+    }
+    logger.info(
+        "smolclaw gmail thread seed complete: %d messages, thread=%s",
+        len(message_ids),
+        thread_id,
     )
     return result
 

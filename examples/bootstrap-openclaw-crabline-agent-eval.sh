@@ -12,7 +12,10 @@ mkdir -p \
   "${EVAL_DIR}/cases/case-002" \
   "${EVAL_DIR}/cases/case-003" \
   "${EVAL_DIR}/cases/case-004" \
-  "${EVAL_DIR}/cases/case-005"
+  "${EVAL_DIR}/cases/case-005" \
+  "${EVAL_DIR}/cases/case-010" \
+  "${EVAL_DIR}/cases/case-011" \
+  "${EVAL_DIR}/cases/case-012"
 
 cat > "${EVAL_DIR}/eval.yaml" <<'EOF'
 # OpenClaw agent (Quay) → host mocks via exec+curl. AEH scores side effects.
@@ -25,6 +28,9 @@ cat > "${EVAL_DIR}/eval.yaml" <<'EOF'
 #   case-003 — Slack: threaded reply answering seeded 2+2
 #   case-004 — Calendar: find seeded code, create event with code + marker
 #   case-005 — Gmail: find seeded code, send mail with code + marker
+#   case-010 — Gmail READ: list inbox, extract action-item code from email
+#   case-011 — Gmail READ: search by sender, extract approval code
+#   case-012 — Gmail READ: read message thread, extract decision code
 name: openclaw-crabline-agent
 
 runner:
@@ -95,9 +101,15 @@ judges:
     feedback_type: bool
 
   - name: smolclaw_gmail_message
-    if: "annotations.get('smolclaw_kind') == 'gmail'"
+    if: "annotations.get('smolclaw_kind') == 'gmail' and not annotations.get('smolclaw_read_only')"
     module: agent_eval.openshell.smolclaw_score
     function: score_gmail_message_with_code
+    feedback_type: bool
+
+  - name: smolclaw_gmail_read
+    if: "annotations.get('smolclaw_kind') == 'gmail' and annotations.get('smolclaw_read_only')"
+    module: agent_eval.openshell.smolclaw_score
+    function: score_gmail_read_extraction
     feedback_type: bool
 
   - name: used_exec_tool
@@ -127,6 +139,8 @@ thresholds:
   smolclaw_calendar_event:
     min_pass_rate: 1.0
   smolclaw_gmail_message:
+    min_pass_rate: 1.0
+  smolclaw_gmail_read:
     min_pass_rate: 1.0
   used_exec_tool:
     min_pass_rate: 1.0
@@ -288,5 +302,150 @@ smolclaw_seed:
     Reply (send) an email that includes that code and your eval marker.
 EOF
 
-echo "Wrote ${EVAL_DIR}/eval.yaml and cases/case-001..005"
-ls -la "${EVAL_DIR}/eval.yaml" "${EVAL_DIR}/cases"/case-00*/{input,annotations}.yaml
+# --- case-010: Gmail READ — inbox action item ---
+cat > "${EVAL_DIR}/cases/case-010/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent mail or claim success without API JSON.
+
+  Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
+
+  Task:
+  1) GET ${GMAIL_API_URL}users/me/messages to list inbox messages
+  2) For each message id returned, GET ${GMAIL_API_URL}users/me/messages/<id>?format=full
+  3) Find the email about a sprint review / team update
+  4) Extract the confirmation code from the email body (it follows "confirm with code")
+  5) Final reply: include the exact confirmation code you found and briefly
+     list the action items from the email
+
+  Do not guess the code — read it from Gmail.
+EOF
+cat > "${EVAL_DIR}/cases/case-010/annotations.yaml" <<'EOF'
+expected_code: "GMAIL-READ-TASK-42"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  from: "team-lead@example.com"
+  subject: "Weekly Sprint Review - Action Items"
+  body: >
+    Hi team,
+
+    Here are the action items from today's sprint review:
+    1. Update the deployment scripts by Thursday (owner: DevOps)
+    2. Review PR #142 for the auth refactor (owner: Backend)
+    3. Confirm with code GMAIL-READ-TASK-42 that you received this email
+
+    Please complete all items by end of week.
+
+    Thanks,
+    Team Lead
+EOF
+
+# --- case-011: Gmail READ — search by sender ---
+cat > "${EVAL_DIR}/cases/case-011/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent mail or claim success without API JSON.
+
+  Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
+
+  Task:
+  1) GET ${GMAIL_API_URL}users/me/messages?q=from:ops-alert@example.com
+     to search for emails from ops-alert@example.com
+  2) GET the matching message with format=full to read its content
+  3) Find the deployment approval code in the email body
+  4) Final reply: include the exact approval code and the version number
+     mentioned in the email
+
+  Do not guess the code — read it from Gmail.
+EOF
+cat > "${EVAL_DIR}/cases/case-011/annotations.yaml" <<'EOF'
+expected_code: "URGENT-DEPLOY-KEY-88"
+forbidden_codes:
+  - "STAGING-DEPLOY-KEY-55"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  messages:
+    - from: "ci-bot@example.com"
+      subject: "Staging deploy completed - STAGING-DEPLOY-KEY-55"
+      body: >
+        Staging deployment succeeded for v3.1.0-rc2.
+        Staging verification code: STAGING-DEPLOY-KEY-55
+        No action required — this is an automated notification.
+    - from: "ops-alert@example.com"
+      subject: "URGENT: Deployment approval needed for v3.2.1"
+      body: >
+        ALERT: Production deployment approval required.
+
+        Release: v3.2.1
+        Environment: production-us-east-1
+        Approval code: URGENT-DEPLOY-KEY-88
+
+        This deployment includes critical security patches.
+        Please confirm receipt by including this approval code in your response.
+EOF
+
+# --- case-012: Gmail READ — thread summary ---
+cat > "${EVAL_DIR}/cases/case-012/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent mail or claim success without API JSON.
+
+  Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
+
+  Task:
+  1) GET ${GMAIL_API_URL}users/me/messages to list inbox messages
+  2) Look for messages about "Database migration plan"
+  3) GET each related message with format=full to read the full conversation
+     (or use GET ${GMAIL_API_URL}users/me/threads/<threadId> if you find a threadId)
+  4) Summarize the thread: who participated, what was proposed, what was decided
+  5) Find the final confirmation/decision code in the thread
+  6) Final reply: include a brief summary of the discussion and the exact
+     decision code from the thread
+
+  Do not guess the content — read it from Gmail.
+EOF
+cat > "${EVAL_DIR}/cases/case-012/annotations.yaml" <<'EOF'
+expected_code: "DECISION-FINAL-77"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  messages:
+    - from: "alice@example.com"
+      subject: "Database migration plan"
+      body: >
+        Team,
+
+        I propose we migrate to PostgreSQL 16 for the analytics database.
+        Key concern: downtime window must stay under 2 hours.
+        Let me know your thoughts.
+
+        — Alice
+    - from: "bob@example.com"
+      subject: "RE: Database migration plan"
+      body: >
+        Alice,
+
+        Agreed on PostgreSQL 16. I can confirm a zero-downtime approach
+        using logical replication is feasible.
+        We should schedule for next Tuesday's maintenance window.
+
+        — Bob
+    - from: "carol@example.com"
+      subject: "RE: Database migration plan"
+      body: >
+        All,
+
+        Approved. Final decision: proceed with PostgreSQL 16 migration
+        using logical replication during Tuesday's maintenance window.
+        Confirmation code for this decision: DECISION-FINAL-77
+
+        — Carol
+EOF
+
+echo "Wrote ${EVAL_DIR}/eval.yaml and cases/case-001..005, case-010..012"
+ls -la "${EVAL_DIR}/eval.yaml" "${EVAL_DIR}/cases"/case-*/{input,annotations}.yaml

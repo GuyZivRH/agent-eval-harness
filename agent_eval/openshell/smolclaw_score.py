@@ -163,3 +163,55 @@ def score_gmail_message_with_code(
         False,
         f"no gmail message containing both code={code!r} and marker={marker!r}",
     )
+
+
+def score_gmail_read_extraction(
+    outputs: Optional[dict] = None,
+    **_: Any,
+) -> Union[bool, Tuple[bool, str]]:
+    """Verify the agent's response contains all expected codes and none of the forbidden ones.
+
+    Supports both ``expected_code`` (single string) and ``expected_codes`` (list).
+    Optional ``forbidden_codes`` list fails the case if any appear in the response.
+    """
+    outputs = outputs or {}
+    ann = outputs.get("annotations") or {}
+
+    expected_codes: list = ann.get("expected_codes") or []
+    if isinstance(expected_codes, str):
+        expected_codes = [expected_codes]
+    if not expected_codes and ann.get("expected_code"):
+        expected_codes = [str(ann["expected_code"]).strip()]
+    if not expected_codes:
+        return False, "annotations.expected_code(s) is empty"
+
+    forbidden_codes: list = ann.get("forbidden_codes") or []
+    if isinstance(forbidden_codes, str):
+        forbidden_codes = [forbidden_codes]
+
+    response = (outputs.get("output_content") or "").strip()
+    if not response:
+        for key in outputs:
+            if key.endswith("_content") and outputs[key]:
+                response = str(outputs[key]).strip()
+                break
+    if not response:
+        return False, "no agent response to check"
+
+    missing = [c for c in expected_codes if c not in response]
+    if missing:
+        return False, f"response missing code(s): {missing}"
+
+    found_forbidden = [c for c in forbidden_codes if c in response]
+    if found_forbidden:
+        return False, f"response contains forbidden code(s): {found_forbidden}"
+
+    hit_record = {
+        "expected_codes": expected_codes,
+        "forbidden_codes": forbidden_codes,
+        "all_found": True,
+        "none_forbidden": True,
+    }
+    _write_hits(outputs, "smolclaw-gmail-read-hits.jsonl", [hit_record])
+
+    return True, f"all {len(expected_codes)} expected code(s) found, no forbidden codes"
