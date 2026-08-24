@@ -1,3 +1,10 @@
+## [1.41.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.41.0...v1.41.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* **config:** stop warning that the pairwise judge has no score_range ([d2ba106](https://github.com/opendatahub-io/agent-eval-harness/commit/d2ba106480c7bf5eb9113095740a0f446a4c43f6)), closes [#182](https://github.com/opendatahub-io/agent-eval-harness/issues/182)
+
 # [1.41.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.40.2...v1.41.0) (2026-08-21)
 
 
