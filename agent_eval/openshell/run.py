@@ -615,6 +615,7 @@ async def _run_case(
                     {
                         "CRABLINE_SEED_CHANNEL": str(seed_meta.get("channel") or ""),
                         "CRABLINE_SEED_TS": str(seed_meta.get("ts") or ""),
+                        "CRABLINE_SEED_OLDEST": str(seed_meta.get("oldest_ts") or ""),
                         "CRABLINE_CASE_USER": str(
                             case_annotations.get("slack_user")
                             or (case_annotations.get("crabline_seed") or {}).get("users")

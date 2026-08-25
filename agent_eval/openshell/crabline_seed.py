@@ -151,10 +151,19 @@ def seed_crabline_for_case(
         results = []
         for item in seeds_list:
             results.append(_seed_one(item, api_root, token))
+        timestamps = [r["ts"] for r in results if r.get("ts")]
+        oldest = None
+        if timestamps:
+            # Slack oldest is exclusive — subtract 1 microsecond so the first
+            # seeded message is included in conversations.history results.
+            parts = timestamps[0].split(".")
+            micro = int(parts[1]) - 1 if len(parts) == 2 else 0
+            oldest = f"{parts[0]}.{micro:06d}"
         return {
             "ok": True,
             "seeds": results,
             "channels": [r["channel"] for r in results],
+            "oldest_ts": oldest,
             "api_root": api_root,
         }
 

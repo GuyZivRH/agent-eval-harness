@@ -625,14 +625,15 @@ prompt: |
   Do NOT paste bash in markdown instead of calling exec.
   Do NOT invent channel lists or message history.
 
-  Env already set: SLACK_API_URL, SLACK_BOT_TOKEN.
+  Env already set: SLACK_API_URL, SLACK_BOT_TOKEN, CRABLINE_SEED_OLDEST.
 
   Task (READ ONLY — do not post any messages):
   You are producing an overnight Slack digest for a manager arriving in the morning.
 
   1) conversations.list with types=public_channel,private_channel,im — discover
      all channels, groups, and DMs
-  2) conversations.history on each channel to read recent messages
+  2) conversations.history on each channel with oldest=$CRABLINE_SEED_OLDEST
+     to read only recent messages (skip older history)
   3) Produce a prioritized digest with two sections:
      - URGENT / needs attention: items requiring immediate action
      - LOW PRIORITY / can wait: informational items
