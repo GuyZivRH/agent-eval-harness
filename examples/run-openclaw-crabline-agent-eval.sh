@@ -104,12 +104,17 @@ echo "smolclaw gmail=${SMOLCLAW_GMAIL_URL} gcal=${SMOLCLAW_GCAL_URL}"
 echo "RUN_ID=${RUN_ID} model=${MODEL}"
 echo "stack: AEH → OpenShell → Quay OpenClaw → Crabline + smolclaw"
 
+LLM_JUDGE_FLAG=""
+if [[ "${EVAL_LLM_JUDGES:-0}" != "1" ]]; then
+  LLM_JUDGE_FLAG="--no-llm-judges"
+fi
+
 cd "${ROOT}"
 "${PY}" -m agent_eval.openshell.run \
   --config "${EVAL_YAML}" \
   --model "${MODEL}" \
   --run-id "${RUN_ID}" \
-  --no-llm-judges \
+  ${LLM_JUDGE_FLAG} \
   "$@" \
   2>&1 | tee "${ROOT}/.tmp/aeh-${RUN_ID}.log"
 
