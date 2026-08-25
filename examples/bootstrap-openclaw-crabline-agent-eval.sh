@@ -16,7 +16,12 @@ mkdir -p \
   "${EVAL_DIR}/cases/case-010" \
   "${EVAL_DIR}/cases/case-011" \
   "${EVAL_DIR}/cases/case-012" \
-  "${EVAL_DIR}/cases/case-013"
+  "${EVAL_DIR}/cases/case-013" \
+  "${EVAL_DIR}/cases/case-014" \
+  "${EVAL_DIR}/cases/case-015" \
+  "${EVAL_DIR}/cases/case-016" \
+  "${EVAL_DIR}/cases/case-017" \
+  "${EVAL_DIR}/cases/case-018"
 
 cat > "${EVAL_DIR}/eval.yaml" <<'EOF'
 # OpenClaw agent (Quay) → host mocks via exec+curl. AEH scores side effects.
@@ -29,10 +34,15 @@ cat > "${EVAL_DIR}/eval.yaml" <<'EOF'
 #   case-003 — Slack: threaded reply answering seeded 2+2
 #   case-004 — Calendar: find seeded code, create event with code + marker
 #   case-005 — Gmail: find seeded code, send mail with code + marker
-#   case-010 — Gmail READ: list inbox, extract action-item code from email
-#   case-011 — Gmail READ: search by sender, extract approval code
-#   case-012 — Gmail READ: read message thread, extract decision code
-#   case-013 — Gmail READ: list folders/labels and messages in folder, extract code
+#   case-010 — Gmail READ: list-mail-messages (list all inbox messages)
+#   case-011 — Gmail READ: get-mail-message (read specific message by ID)
+#   case-012 — Gmail READ: list-mail-folders (list all labels/folders)
+#   case-013 — Gmail READ: list-mail-folder-messages (list messages in a label)
+#   case-014 — Calendar READ: list-calendar-events (list events on calendar)
+#   case-015 — Calendar READ: list-calendars (list available calendars)
+#   case-016 — Calendar READ: get-calendar-event (read individual event)
+#   case-017 — Calendar READ: get-calendar-view (events in a time range)
+#   case-018 — Calendar READ: get-schedule (query availability/free time)
 name: openclaw-crabline-agent
 
 runner:
@@ -97,9 +107,15 @@ judges:
     feedback_type: bool
 
   - name: smolclaw_calendar_event
-    if: "annotations.get('smolclaw_kind') == 'calendar'"
+    if: "annotations.get('smolclaw_kind') == 'calendar' and not annotations.get('smolclaw_read_only')"
     module: agent_eval.openshell.smolclaw_score
     function: score_calendar_event_with_code
+    feedback_type: bool
+
+  - name: smolclaw_calendar_read
+    if: "annotations.get('smolclaw_kind') == 'calendar' and annotations.get('smolclaw_read_only')"
+    module: agent_eval.openshell.smolclaw_score
+    function: score_calendar_read_extraction
     feedback_type: bool
 
   - name: smolclaw_gmail_message
@@ -139,6 +155,8 @@ thresholds:
   crabline_threaded_answer:
     min_pass_rate: 1.0
   smolclaw_calendar_event:
+    min_pass_rate: 1.0
+  smolclaw_calendar_read:
     min_pass_rate: 1.0
   smolclaw_gmail_message:
     min_pass_rate: 1.0
@@ -304,7 +322,7 @@ smolclaw_seed:
     Reply (send) an email that includes that code and your eval marker.
 EOF
 
-# --- case-010: Gmail READ — inbox action item ---
+# --- case-010: Gmail READ — list-mail-messages ---
 cat > "${EVAL_DIR}/cases/case-010/input.yaml" <<'EOF'
 prompt: |
   CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
@@ -313,143 +331,95 @@ prompt: |
   Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
 
   Task:
-  1) GET ${GMAIL_API_URL}users/me/messages to list inbox messages
-  2) For each message id returned, GET ${GMAIL_API_URL}users/me/messages/<id>?format=full
-  3) Find the email about a sprint review / team update
-  4) Extract the confirmation code from the email body (it follows "confirm with code")
-  5) Final reply: include the exact confirmation code you found and briefly
-     list the action items from the email
+  1) GET ${GMAIL_API_URL}users/me/messages to list all messages in the inbox
+  2) For each message returned, GET ${GMAIL_API_URL}users/me/messages/<id>?format=full
+     to read its subject line
+  3) Final reply: list every message subject line you found
 
-  Do not guess the code — read it from Gmail.
+  Do not guess — read from Gmail.
 EOF
 cat > "${EVAL_DIR}/cases/case-010/annotations.yaml" <<'EOF'
-expected_code: "GMAIL-READ-TASK-42"
+expected_codes:
+  - "Weekly Sprint Review - Action Items"
+  - "URGENT: Deployment approval needed for v3.2.1"
+  - "Database migration plan - Decision needed"
 smolclaw_kind: gmail
 smolclaw_read_only: true
 smolclaw_seed:
   kind: gmail
-  from: "team-lead@example.com"
-  subject: "Weekly Sprint Review - Action Items"
-  body: >
-    Hi team,
-
-    Here are the action items from today's sprint review:
-    1. Update the deployment scripts by Thursday (owner: DevOps)
-    2. Review PR #142 for the auth refactor (owner: Backend)
-    3. Confirm with code GMAIL-READ-TASK-42 that you received this email
-
-    Please complete all items by end of week.
-
-    Thanks,
-    Team Lead
+  threaded: false
+  messages:
+    - from: "team-lead@example.com"
+      subject: "Weekly Sprint Review - Action Items"
+      body: "Hi team, here are the action items from today's sprint review."
+    - from: "ops-alert@example.com"
+      subject: "URGENT: Deployment approval needed for v3.2.1"
+      body: "Production deployment approval required for v3.2.1."
+    - from: "carol@example.com"
+      subject: "Database migration plan - Decision needed"
+      body: "Team, I propose we migrate to PostgreSQL 16."
 EOF
 
-# --- case-011: Gmail READ — search by sender ---
+# --- case-011: Gmail READ — get-mail-message ---
 cat > "${EVAL_DIR}/cases/case-011/input.yaml" <<'EOF'
 prompt: |
   CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
   Do NOT invent mail or claim success without API JSON.
 
   Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
+  The message ID to read is in env var SMOLCLAW_SEED_MESSAGE_ID.
 
   Task:
-  1) GET ${GMAIL_API_URL}users/me/messages?q=from:ops-alert@example.com
-     to search for emails from ops-alert@example.com
-  2) GET the matching message with format=full to read its content
-  3) Find the deployment approval code in the email body
-  4) Final reply: include the exact approval code and the version number
-     mentioned in the email
+  1) GET ${GMAIL_API_URL}users/me/messages/${SMOLCLAW_SEED_MESSAGE_ID}?format=full
+     to read the full message
+  2) Extract the confirmation code from the email body
+  3) Final reply: include the exact confirmation code you found
 
-  Do not guess the code — read it from Gmail.
+  Do not guess the code — read it from the message body.
 EOF
 cat > "${EVAL_DIR}/cases/case-011/annotations.yaml" <<'EOF'
-expected_code: "URGENT-DEPLOY-KEY-88"
-forbidden_codes:
-  - "STAGING-DEPLOY-KEY-55"
+expected_code: "GMAIL-READ-CODE-011"
 smolclaw_kind: gmail
 smolclaw_read_only: true
 smolclaw_seed:
   kind: gmail
-  messages:
-    - from: "ci-bot@example.com"
-      subject: "Staging deploy completed - STAGING-DEPLOY-KEY-55"
-      body: >
-        Staging deployment succeeded for v3.1.0-rc2.
-        Staging verification code: STAGING-DEPLOY-KEY-55
-        No action required — this is an automated notification.
-    - from: "ops-alert@example.com"
-      subject: "URGENT: Deployment approval needed for v3.2.1"
-      body: >
-        ALERT: Production deployment approval required.
-
-        Release: v3.2.1
-        Environment: production-us-east-1
-        Approval code: URGENT-DEPLOY-KEY-88
-
-        This deployment includes critical security patches.
-        Please confirm receipt by including this approval code in your response.
+  from: "project-updates@example.com"
+  subject: "Project Status Update Q4"
+  body: >
+    Here is the quarterly project status update.
+    Confirmation code: GMAIL-READ-CODE-011
+    Please acknowledge receipt of this status report.
 EOF
 
-# --- case-012: Gmail READ — thread summary ---
+# --- case-012: Gmail READ — list-mail-folders ---
 cat > "${EVAL_DIR}/cases/case-012/input.yaml" <<'EOF'
 prompt: |
   CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
-  Do NOT invent mail or claim success without API JSON.
+  Do NOT invent labels or claim success without API JSON.
 
   Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
 
   Task:
-  1) GET ${GMAIL_API_URL}users/me/messages to list inbox messages
-  2) Look for messages about "Database migration plan"
-  3) GET each related message with format=full to read the full conversation
-     (or use GET ${GMAIL_API_URL}users/me/threads/<threadId> if you find a threadId)
-  4) Summarize the thread: who participated, what was proposed, what was decided
-  5) Find the final confirmation/decision code in the thread
-  6) Final reply: include a brief summary of the discussion and the exact
-     decision code from the thread
+  1) GET ${GMAIL_API_URL}users/me/labels to list all available Gmail labels/folders
+  2) Final reply: list every label name you found
 
-  Do not guess the content — read it from Gmail.
+  Do not guess — read from Gmail.
 EOF
 cat > "${EVAL_DIR}/cases/case-012/annotations.yaml" <<'EOF'
-expected_code: "DECISION-FINAL-77"
+expected_codes:
+  - "inbox"
+  - "sent"
+  - "draft"
+  - "AEH-Project-Tracking"
 smolclaw_kind: gmail
 smolclaw_read_only: true
 smolclaw_seed:
   kind: gmail
-  messages:
-    - from: "alice@example.com"
-      subject: "Database migration plan"
-      body: >
-        Team,
-
-        I propose we migrate to PostgreSQL 16 for the analytics database.
-        Key concern: downtime window must stay under 2 hours.
-        Let me know your thoughts.
-
-        — Alice
-    - from: "bob@example.com"
-      subject: "RE: Database migration plan"
-      body: >
-        Alice,
-
-        Agreed on PostgreSQL 16. I can confirm a zero-downtime approach
-        using logical replication is feasible.
-        We should schedule for next Tuesday's maintenance window.
-
-        — Bob
-    - from: "carol@example.com"
-      subject: "RE: Database migration plan"
-      body: >
-        All,
-
-        Approved. Final decision: proceed with PostgreSQL 16 migration
-        using logical replication during Tuesday's maintenance window.
-        Confirmation code for this decision: DECISION-FINAL-77
-
-        — Carol
+  create_labels:
+    - "AEH-Project-Tracking"
 EOF
 
-# --- case-013: Gmail READ — list labels and read messages in folder ---
+# --- case-013: Gmail READ — list-mail-folder-messages ---
 cat > "${EVAL_DIR}/cases/case-013/input.yaml" <<'EOF'
 prompt: |
   CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
@@ -458,27 +428,186 @@ prompt: |
   Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
 
   Task:
-  1) GET ${GMAIL_API_URL}users/me/labels to list all available labels/folders
-  2) Look for messages in the "important" or "starred" label
-  3) GET ${GMAIL_API_URL}users/me/messages?labelIds=<label_id> to find messages in that label
-  4) Read the message in that label and extract the project tracking code
-  5) Final reply: include the exact project tracking code and the folder name
+  1) GET ${GMAIL_API_URL}users/me/labels to find the label named "AEH-Project-Tracking"
+     and note its id
+  2) GET ${GMAIL_API_URL}users/me/messages?labelIds=<that_label_id>
+     to list messages in that specific label
+  3) For each message found, GET ${GMAIL_API_URL}users/me/messages/<id>?format=full
+     to read the message content
+  4) Extract the tracking code from the message body
+  5) Final reply: include the exact tracking code from the labeled message
 
-  Do not guess the code — read it from messages in the labeled folder.
+  Do not guess — read from Gmail.
 EOF
 cat > "${EVAL_DIR}/cases/case-013/annotations.yaml" <<'EOF'
-expected_code: "PROJECT-LABEL-7392"
+expected_code: "FOLDER-MSG-CODE-013"
 smolclaw_kind: gmail
 smolclaw_read_only: true
 smolclaw_seed:
   kind: gmail
-  subject: "Project tracking: Important milestone"
+  create_labels:
+    - "AEH-Project-Tracking"
+  seed_to_label: "AEH-Project-Tracking"
+  from: "milestone-tracker@example.com"
+  subject: "Q4 Milestone Status Report"
   body: >
-    This is an important project tracking email.
-    The project tracking code is: PROJECT-LABEL-7392
-
-    Please mark this as important for future reference.
+    Project milestone tracking update.
+    Tracking code: FOLDER-MSG-CODE-013
+    Please review and confirm receipt.
 EOF
 
-echo "Wrote ${EVAL_DIR}/eval.yaml and cases/case-001..005, case-010..013"
+# --- case-014: Calendar READ — list-calendar-events ---
+cat > "${EVAL_DIR}/cases/case-014/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent calendar events or claim success without API JSON.
+
+  Env already set: CALENDAR_API_URL (Google Calendar v3 mock on host).
+
+  Task:
+  1) GET ${CALENDAR_API_URL}calendars/primary/events to list all events
+     on the primary calendar
+  2) Final reply: list every event summary you found
+
+  Do not guess — read from Calendar.
+EOF
+cat > "${EVAL_DIR}/cases/case-014/annotations.yaml" <<'EOF'
+expected_codes:
+  - "Team Standup - Project Alpha"
+  - "Architecture Review Board"
+  - "Sprint Planning Q4"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  events:
+    - summary: "Team Standup - Project Alpha"
+      description: "Daily standup for Project Alpha team."
+    - summary: "Architecture Review Board"
+      description: "Monthly architecture review meeting."
+    - summary: "Sprint Planning Q4"
+      description: "Q4 sprint planning session."
+EOF
+
+# --- case-015: Calendar READ — list-calendars ---
+cat > "${EVAL_DIR}/cases/case-015/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent calendars or claim success without API JSON.
+
+  Env already set: CALENDAR_API_URL (Google Calendar v3 mock on host).
+
+  Task:
+  1) GET ${CALENDAR_API_URL}users/me/calendarList to list all available calendars
+  2) Final reply: list every calendar name you found
+
+  Do not guess — read from Calendar.
+EOF
+cat > "${EVAL_DIR}/cases/case-015/annotations.yaml" <<'EOF'
+expected_codes:
+  - "AEH-Team-Calendar"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  create_calendars:
+    - "AEH-Team-Calendar"
+EOF
+
+# --- case-016: Calendar READ — get-calendar-event ---
+cat > "${EVAL_DIR}/cases/case-016/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent event details or claim success without API JSON.
+
+  Env already set: CALENDAR_API_URL (Google Calendar v3 mock on host).
+  The event ID to read is in env var SMOLCLAW_SEED_EVENT_ID.
+
+  Task:
+  1) GET ${CALENDAR_API_URL}calendars/primary/events/${SMOLCLAW_SEED_EVENT_ID}
+     to read the full event details
+  2) Extract the confirmation code from the event description
+  3) Final reply: include the exact confirmation code you found
+
+  Do not guess the code — read it from the event description.
+EOF
+cat > "${EVAL_DIR}/cases/case-016/annotations.yaml" <<'EOF'
+expected_code: "CAL-EVENT-CODE-016"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  summary: "Quarterly Business Review"
+  description: >
+    Quarterly review meeting with stakeholders.
+    Confirmation code: CAL-EVENT-CODE-016
+    Please include this code in your response.
+EOF
+
+# --- case-017: Calendar READ — get-calendar-view ---
+cat > "${EVAL_DIR}/cases/case-017/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent calendar events or claim success without API JSON.
+
+  Env already set: CALENDAR_API_URL (Google Calendar v3 mock on host).
+
+  Task:
+  1) GET ${CALENDAR_API_URL}calendars/primary/events?timeMin=2026-08-26T00:00:00Z&timeMax=2026-08-27T00:00:00Z
+     to list events on August 26, 2026
+  2) Read the events returned and extract any confirmation code from descriptions
+  3) Final reply: include the exact confirmation code and the events in that range
+
+  Do not guess — read from Calendar using the time range filter.
+EOF
+cat > "${EVAL_DIR}/cases/case-017/annotations.yaml" <<'EOF'
+expected_code: "CAL-VIEW-CODE-017"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  summary: "Sprint Demo Session"
+  description: >
+    Sprint demo for stakeholders.
+    Confirmation code: CAL-VIEW-CODE-017
+  start: "2026-08-26T14:00:00Z"
+  end: "2026-08-26T15:00:00Z"
+EOF
+
+# --- case-018: Calendar READ — get-schedule ---
+cat > "${EVAL_DIR}/cases/case-018/input.yaml" <<'EOF'
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent availability or claim success without API JSON.
+
+  Env already set: CALENDAR_API_URL (Google Calendar v3 mock on host).
+
+  Task:
+  1) GET ${CALENDAR_API_URL}calendars/primary/events?timeMin=2026-08-27T08:00:00Z&timeMax=2026-08-27T18:00:00Z
+     to list events on August 27, 2026 (8am–6pm)
+  2) Look at event start/end times to determine which hours are free
+  3) Extract the scheduling code from the event description
+  4) Final reply: include the exact scheduling code and list the free time slots
+
+  Do not guess availability — calculate from actual event times.
+EOF
+cat > "${EVAL_DIR}/cases/case-018/annotations.yaml" <<'EOF'
+expected_code: "CAL-SCHED-CODE-018"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  summary: "Team Sync Meeting"
+  description: >
+    Team sync meeting.
+    Scheduling code: CAL-SCHED-CODE-018
+  start: "2026-08-27T09:00:00Z"
+  end: "2026-08-27T10:00:00Z"
+EOF
+
+echo "Wrote ${EVAL_DIR}/eval.yaml and cases/case-001..005, case-010..018"
 ls -la "${EVAL_DIR}/eval.yaml" "${EVAL_DIR}/cases"/case-*/{input,annotations}.yaml

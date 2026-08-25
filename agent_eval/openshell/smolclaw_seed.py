@@ -49,22 +49,29 @@ def _http_json(method: str, url: str, body: Optional[dict] = None) -> dict:
         raise RuntimeError(f"{method} {url} -> HTTP {e.code}: {detail}") from e
 
 
-def _seed_calendar(seed: dict) -> dict[str, Any]:
-    summary = (seed.get("summary") or "").strip()
-    description = (seed.get("description") or "").strip()
-    if not summary:
-        raise ValueError("smolclaw_seed.summary is required for kind=calendar")
-    calendar_id = (seed.get("calendar_id") or "primary").strip()
-    start = seed.get("start") or (
-        datetime.now(timezone.utc) + timedelta(days=1)
-    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    end = seed.get("end") or (
-        datetime.now(timezone.utc) + timedelta(days=1, hours=1)
-    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+def _create_gmail_label(root: str, user: str, name: str) -> dict:
+    """Create a Gmail label via POST users/<user>/labels."""
+    url = f"{root}users/{user}/labels"
+    return _http_json("POST", url, {
+        "name": name,
+        "labelListVisibility": "labelShow",
+        "messageListVisibility": "show",
+    })
 
-    root = _gcal_root()
+
+def _create_calendar(root: str, name: str) -> dict:
+    """Create a secondary calendar via POST /calendars."""
+    url = f"{root}calendars"
+    return _http_json("POST", url, {"summary": name})
+
+
+def _post_one_event(
+    root: str, calendar_id: str, summary: str, description: str,
+    start: str, end: str,
+) -> dict:
+    """POST a single event. Returns the API response dict."""
     url = f"{root}calendars/{calendar_id}/events"
-    posted = _http_json(
+    return _http_json(
         "POST",
         url,
         {
@@ -74,6 +81,78 @@ def _seed_calendar(seed: dict) -> dict[str, Any]:
             "end": {"dateTime": end},
         },
     )
+
+
+def _default_start_end(
+    event: dict, offset_days: int = 1,
+) -> tuple[str, str]:
+    """Return (start, end) ISO strings from an event dict or defaults."""
+    start = event.get("start") or (
+        datetime.now(timezone.utc) + timedelta(days=offset_days)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    end = event.get("end") or (
+        datetime.now(timezone.utc) + timedelta(days=offset_days, hours=1)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return start, end
+
+
+def _seed_calendar(seed: dict) -> dict[str, Any]:
+    root = _gcal_root()
+
+    # Phase 1: create secondary calendars if requested
+    create_calendars = seed.get("create_calendars") or []
+    created_calendars: dict[str, str] = {}
+    for cal_name in create_calendars:
+        cal_data = _create_calendar(root, cal_name)
+        created_calendars[cal_name] = cal_data.get("id", "")
+        logger.info(
+            "smolclaw calendar created: name=%r id=%s",
+            cal_name, created_calendars[cal_name],
+        )
+
+    calendar_id = (seed.get("calendar_id") or "primary").strip()
+
+    # Phase 2: seed events
+    events_list = seed.get("events")
+    if events_list and isinstance(events_list, list):
+        event_ids: list[str] = []
+        for i, ev in enumerate(events_list):
+            s = (ev.get("summary") or "").strip()
+            if not s:
+                raise ValueError("each event in smolclaw_seed.events needs a summary")
+            d = (ev.get("description") or "").strip()
+            start, end = _default_start_end(ev, offset_days=1 + i)
+            posted = _post_one_event(root, calendar_id, s, d, start, end)
+            event_ids.append(posted.get("id", ""))
+            logger.info("smolclaw calendar batch seed: id=%s summary=%r", event_ids[-1], s[:80])
+
+        result: dict[str, Any] = {
+            "ok": True,
+            "kind": "calendar",
+            "calendar_id": calendar_id,
+            "event_id": event_ids[-1],
+            "event_ids": event_ids,
+            "api_root": root,
+        }
+        if created_calendars:
+            result["created_calendars"] = created_calendars
+        return result
+
+    summary = (seed.get("summary") or "").strip()
+    if not summary:
+        if created_calendars:
+            return {
+                "ok": True,
+                "kind": "calendar",
+                "api_root": root,
+                "created_calendars": created_calendars,
+            }
+        raise ValueError("smolclaw_seed.summary is required for kind=calendar")
+
+    description = (seed.get("description") or "").strip()
+    start, end = _default_start_end(seed)
+
+    posted = _post_one_event(root, calendar_id, summary, description, start, end)
     result = {
         "ok": True,
         "kind": "calendar",
@@ -82,6 +161,8 @@ def _seed_calendar(seed: dict) -> dict[str, Any]:
         "summary": summary,
         "api_root": root,
     }
+    if created_calendars:
+        result["created_calendars"] = created_calendars
     logger.info(
         "smolclaw calendar seed: id=%s summary=%r",
         result["event_id"],
@@ -105,9 +186,13 @@ def _rfc822_raw(*, subject: str, body: str, to: str, frm: str) -> str:
 
 def _import_one_gmail(
     root: str, user: str, raw: str, *, thread_id: Optional[str] = None,
+    extra_label_ids: Optional[list[str]] = None,
 ) -> dict:
     """Import a single message into the mock. Returns the API response dict."""
-    payload: dict[str, Any] = {"raw": raw, "labelIds": ["INBOX", "UNREAD"]}
+    label_ids = ["INBOX", "UNREAD"]
+    if extra_label_ids:
+        label_ids.extend(extra_label_ids)
+    payload: dict[str, Any] = {"raw": raw, "labelIds": label_ids}
     if thread_id:
         payload["threadId"] = thread_id
     try:
@@ -117,21 +202,54 @@ def _import_one_gmail(
 
 
 def _seed_gmail(seed: dict) -> dict[str, Any]:
-    messages = seed.get("messages")
-    if messages and isinstance(messages, list):
-        return _seed_gmail_thread(seed, messages)
-
-    subject = (seed.get("subject") or "").strip()
-    body = (seed.get("body") or "").strip()
-    if not subject:
-        raise ValueError("smolclaw_seed.subject is required for kind=gmail")
-    to = (seed.get("to") or "me").strip()
-    frm = (seed.get("from") or "aeh-seed@example.com").strip()
+    root = _gmail_root()
     user = (seed.get("user") or "me").strip()
 
-    root = _gmail_root()
+    # Phase 1: create custom labels if requested
+    create_labels = seed.get("create_labels") or []
+    created_labels: dict[str, str] = {}
+    for label_name in create_labels:
+        label_data = _create_gmail_label(root, user, label_name)
+        created_labels[label_name] = label_data.get("id", "")
+        logger.info(
+            "smolclaw gmail label created: name=%r id=%s",
+            label_name, created_labels[label_name],
+        )
+
+    # Resolve extra label IDs to attach to seeded messages
+    extra_label_ids: list[str] = []
+    seed_to_label = seed.get("seed_to_label")
+    if seed_to_label and seed_to_label in created_labels:
+        extra_label_ids.append(created_labels[seed_to_label])
+
+    # Phase 2: seed messages
+    messages = seed.get("messages")
+    if messages and isinstance(messages, list):
+        threaded = seed.get("threaded", True)
+        result = _seed_gmail_thread(
+            seed, messages, threaded=threaded, extra_label_ids=extra_label_ids,
+        )
+        if created_labels:
+            result["created_labels"] = created_labels
+        return result
+
+    subject = (seed.get("subject") or "").strip()
+    if not subject:
+        if created_labels:
+            return {
+                "ok": True,
+                "kind": "gmail",
+                "api_root": root,
+                "created_labels": created_labels,
+            }
+        raise ValueError("smolclaw_seed.subject is required for kind=gmail")
+
+    body = (seed.get("body") or "").strip()
+    to = (seed.get("to") or "me").strip()
+    frm = (seed.get("from") or "aeh-seed@example.com").strip()
+
     raw = _rfc822_raw(subject=subject, body=body or subject, to=to, frm=frm)
-    posted = _import_one_gmail(root, user, raw)
+    posted = _import_one_gmail(root, user, raw, extra_label_ids=extra_label_ids)
 
     result = {
         "ok": True,
@@ -141,6 +259,8 @@ def _seed_gmail(seed: dict) -> dict[str, Any]:
         "subject": subject,
         "api_root": root,
     }
+    if created_labels:
+        result["created_labels"] = created_labels
     logger.info(
         "smolclaw gmail seed: id=%s subject=%r",
         result["message_id"],
@@ -149,14 +269,21 @@ def _seed_gmail(seed: dict) -> dict[str, Any]:
     return result
 
 
-def _seed_gmail_thread(seed: dict, messages: list[dict]) -> dict[str, Any]:
-    """Seed multiple messages as a single thread."""
+def _seed_gmail_thread(
+    seed: dict,
+    messages: list[dict],
+    *,
+    threaded: bool = True,
+    extra_label_ids: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Seed multiple messages, optionally as a single thread."""
     if not messages:
         raise ValueError("smolclaw_seed.messages list is empty")
     user = (seed.get("user") or "me").strip()
     root = _gmail_root()
     thread_id: Optional[str] = None
     message_ids: list[str] = []
+    mode = "thread" if threaded else "batch"
 
     for msg in messages:
         frm = (msg.get("from") or "aeh-seed@example.com").strip()
@@ -166,12 +293,16 @@ def _seed_gmail_thread(seed: dict, messages: list[dict]) -> dict[str, Any]:
         if not subject:
             raise ValueError("each message in smolclaw_seed.messages needs a subject")
         raw = _rfc822_raw(subject=subject, body=body, to=to, frm=frm)
-        posted = _import_one_gmail(root, user, raw, thread_id=thread_id)
+        posted = _import_one_gmail(
+            root, user, raw,
+            thread_id=thread_id if threaded else None,
+            extra_label_ids=extra_label_ids,
+        )
         mid = posted.get("id") or ""
         message_ids.append(mid)
-        if thread_id is None:
+        if threaded and thread_id is None:
             thread_id = posted.get("threadId")
-        logger.info("smolclaw gmail thread seed: id=%s subject=%r", mid, subject[:80])
+        logger.info("smolclaw gmail %s seed: id=%s subject=%r", mode, mid, subject[:80])
 
     result: dict[str, Any] = {
         "ok": True,
@@ -183,9 +314,9 @@ def _seed_gmail_thread(seed: dict, messages: list[dict]) -> dict[str, Any]:
         "api_root": root,
     }
     logger.info(
-        "smolclaw gmail thread seed complete: %d messages, thread=%s",
+        "smolclaw gmail %s seed complete: %d messages",
+        mode,
         len(message_ids),
-        thread_id,
     )
     return result
 
