@@ -1,3 +1,10 @@
+## [1.41.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.41.1...v1.41.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **evalhub:** resolve _run_with_client names from its own scope ([58d54a0](https://github.com/opendatahub-io/agent-eval-harness/commit/58d54a054dbda16479c567fba2e5a9cdb631f820))
+
 ## [1.41.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.41.0...v1.41.1) (2026-08-24)
 
 
