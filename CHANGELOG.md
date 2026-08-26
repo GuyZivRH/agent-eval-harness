@@ -1,3 +1,15 @@
+# [1.42.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.41.2...v1.42.0) (2026-08-26)
+
+
+### Bug Fixes
+
+* **hermetic:** reject the reserved "*" key at the registry boundary ([703543d](https://github.com/opendatahub-io/agent-eval-harness/commit/703543d44e04194abe8aaa41a0f7c5fdaa3027e2))
+
+
+### Features
+
+* **workspace:** hermetic-by-default plugin isolation via enabledPlugins ([8227eba](https://github.com/opendatahub-io/agent-eval-harness/commit/8227eba186d33480550ecf4e0328f998f4c98ca7))
+
 ## [1.41.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.41.1...v1.41.2) (2026-08-25)
 
 
