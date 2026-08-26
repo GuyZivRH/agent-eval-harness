@@ -1,3 +1,11 @@
+## [1.42.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.42.0...v1.42.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **workspace:** materialize listed file symlinks in workspace.files ([1d2e296](https://github.com/opendatahub-io/agent-eval-harness/commit/1d2e296676729a29e7e42691d5e43acc6dedfde2))
+* **workspace:** tighten symlink allowlist and warn on nested skips ([2683913](https://github.com/opendatahub-io/agent-eval-harness/commit/26839136acd3937ab4297e6d9104548f0f983d04))
+
 # [1.42.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.41.2...v1.42.0) (2026-08-26)
 
 
