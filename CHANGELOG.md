@@ -1,3 +1,12 @@
+## [1.43.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.43.0...v1.43.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **staging:** copy plugin-root .mcp.json into isolated eval workspaces ([76b63b6](https://github.com/opendatahub-io/agent-eval-harness/commit/76b63b629759c83f24fb5b2d697b82a00c5a94f9))
+* **staging:** document isolated MCP coverage limits ([e82bff4](https://github.com/opendatahub-io/agent-eval-harness/commit/e82bff462a527e8a6ebd55eae8e8c67ca3ef22dc))
+* **staging:** keep optional-file comment generic ([e437376](https://github.com/opendatahub-io/agent-eval-harness/commit/e437376eaa880b42b9d2d7110318da250ddcb411))
+
 # [1.43.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.42.1...v1.43.0) (2026-08-27)
 
 
