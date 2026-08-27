@@ -1,3 +1,10 @@
+# [1.43.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.42.1...v1.43.0) (2026-08-27)
+
+
+### Features
+
+* **workspace:** symlink-free {dest, source} shared files, portable across substrates ([ea61ddf](https://github.com/opendatahub-io/agent-eval-harness/commit/ea61ddfb1d5e738eb5459998bb9aba849b8e084f)), closes [#203](https://github.com/opendatahub-io/agent-eval-harness/issues/203)
+
 ## [1.42.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.42.0...v1.42.1) (2026-08-26)
 
 
