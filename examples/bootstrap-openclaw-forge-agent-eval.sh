@@ -344,6 +344,22 @@ judges:
     feedback_type: bool
 
 thresholds:
+  prioritization_recall:
+    min_mean: 5.0
+  prioritization_precision:
+    min_mean: 5.0
+  prioritization_relevance:
+    min_mean: 5.0
+  connection_precision:
+    min_mean: 5.0
+  connection_recall:
+    min_mean: 5.0
+  analysis_accuracy:
+    min_mean: 5.0
+  analysis_independent_judgment:
+    min_mean: 5.0
+  analysis_citations:
+    min_mean: 5.0
   used_exec_tool:
     min_pass_rate: 1.0
   response_received:

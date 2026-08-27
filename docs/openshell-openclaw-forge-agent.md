@@ -300,7 +300,7 @@ The rubric criteria come from the Forge evaluation rubrics document (see
 
 ### Thresholds
 
-All LLM judges require `min_mean: 4.0`. Deterministic judges require
+All LLM judges require `min_mean: 5.0`. Deterministic judges require
 `min_pass_rate: 1.0`. Scores below these thresholds flag regressions.
 
 ---
