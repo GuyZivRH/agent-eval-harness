@@ -127,3 +127,55 @@ def seed_crabline_for_case(
         text[:80],
     )
     return result
+
+
+def seed_crabline_for_scene(
+    seeds: list,
+    *,
+    api_root: Optional[str] = None,
+    token: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Seed a list of Slack messages into Crabline. Return list of metadata dicts.
+
+    Each seed has ``text`` (required) and either ``channel`` (post to a
+    public/private channel) or ``users`` (open a DM first, then post).
+    """
+    api_root = api_root or _api_root()
+    token = token or _bot_token()
+    if not token:
+        raise RuntimeError(
+            "SLACK_BOT_TOKEN (or Crabline ready file) required to seed Crabline"
+        )
+    results = []
+    for i, seed in enumerate(seeds or []):
+        text = (seed.get("text") or "").strip()
+        if not text:
+            raise ValueError(f"crabline_seeds[{i}].text is required")
+        channel = (seed.get("channel") or "").strip()
+        users = (seed.get("users") or "").strip()
+        if not channel and not users:
+            raise ValueError(
+                f"crabline_seeds[{i}] must have either 'channel' or 'users'"
+            )
+        if users and not channel:
+            opened = _slack_form(api_root, "conversations.open", token, {"users": users})
+            if not opened.get("ok"):
+                raise RuntimeError(f"conversations.open failed for seed {i}: {opened}")
+            channel = (opened.get("channel") or {}).get("id")
+            if not channel:
+                raise RuntimeError(f"conversations.open missing channel id for seed {i}")
+        posted = _slack_form(
+            api_root, "chat.postMessage", token, {"channel": channel, "text": text},
+        )
+        if not posted.get("ok"):
+            raise RuntimeError(f"chat.postMessage failed for seed {i}: {posted}")
+        ts = posted.get("ts") or (posted.get("message") or {}).get("ts")
+        results.append({
+            "ok": True,
+            "channel": channel,
+            "ts": ts,
+            "text": text,
+            "api_root": api_root,
+        })
+        logger.info("Crabline scene seed [%d]: channel=%s ts=%s text=%r", i, channel, ts, text[:80])
+    return results
