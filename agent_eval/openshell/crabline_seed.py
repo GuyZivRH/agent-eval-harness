@@ -74,33 +74,29 @@ def load_case_annotations(config, case_id: str) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def seed_crabline_for_case(
-    annotations: dict,
-    *,
-    api_root: Optional[str] = None,
-    token: Optional[str] = None,
-) -> Optional[dict[str, Any]]:
-    """Post annotations.crabline_seed to Crabline. Return seed metadata or None."""
-    seed = (annotations or {}).get("crabline_seed")
-    if not seed:
-        return None
+def _seed_one(
+    seed: dict,
+    api_root: str,
+    token: str,
+) -> dict[str, Any]:
+    """Post a single seed item to Crabline. Return metadata."""
     text = (seed.get("text") or "").strip()
     if not text:
-        raise ValueError("annotations.crabline_seed.text is required")
-    users = (seed.get("users") or "UCANARY01").strip()
-    api_root = api_root or _api_root()
-    token = token or _bot_token()
-    if not token:
-        raise RuntimeError(
-            "SLACK_BOT_TOKEN (or Crabline ready file) required to seed Crabline"
-        )
+        raise ValueError("crabline seed text is required")
+    direct_channel = (seed.get("channel") or "").strip()
+    users = (seed.get("users") or "").strip()
+    if not direct_channel and not users:
+        users = "UCANARY01"
 
-    opened = _slack_form(api_root, "conversations.open", token, {"users": users})
-    if not opened.get("ok"):
-        raise RuntimeError(f"conversations.open failed: {opened}")
-    channel = (opened.get("channel") or {}).get("id")
-    if not channel:
-        raise RuntimeError(f"conversations.open missing channel id: {opened}")
+    if direct_channel:
+        channel = direct_channel
+    else:
+        opened = _slack_form(api_root, "conversations.open", token, {"users": users})
+        if not opened.get("ok"):
+            raise RuntimeError(f"conversations.open failed: {opened}")
+        channel = (opened.get("channel") or {}).get("id")
+        if not channel:
+            raise RuntimeError(f"conversations.open missing channel id: {opened}")
 
     posted = _slack_form(
         api_root,
@@ -112,18 +108,68 @@ def seed_crabline_for_case(
         raise RuntimeError(f"chat.postMessage seed failed: {posted}")
 
     ts = posted.get("ts") or (posted.get("message") or {}).get("ts")
-    result = {
+    result: dict[str, Any] = {
         "ok": True,
-        "users": users,
         "channel": channel,
         "ts": ts,
         "text": text,
-        "api_root": api_root,
     }
+    if users:
+        result["users"] = users
     logger.info(
         "Crabline seed: channel=%s ts=%s text=%r",
         channel,
         ts,
         text[:80],
     )
+    return result
+
+
+def seed_crabline_for_case(
+    annotations: dict,
+    *,
+    api_root: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    """Post annotations.crabline_seed (or crabline_seeds) to Crabline.
+
+    Supports:
+    - ``crabline_seed`` (singular): one seed with ``users`` or ``channel`` + ``text``
+    - ``crabline_seeds`` (plural): list of seeds for multi-item discovery tests
+
+    Returns seed metadata dict (single) or dict with ``seeds`` list (multi), or None.
+    """
+    api_root = api_root or _api_root()
+    token = token or _bot_token()
+    if not token:
+        raise RuntimeError(
+            "SLACK_BOT_TOKEN (or Crabline ready file) required to seed Crabline"
+        )
+
+    seeds_list = (annotations or {}).get("crabline_seeds")
+    if seeds_list and isinstance(seeds_list, list):
+        results = []
+        for item in seeds_list:
+            results.append(_seed_one(item, api_root, token))
+        timestamps = [r["ts"] for r in results if r.get("ts")]
+        oldest = None
+        if timestamps:
+            # Slack oldest is exclusive — subtract 1 microsecond so the first
+            # seeded message is included in conversations.history results.
+            parts = timestamps[0].split(".")
+            micro = int(parts[1]) - 1 if len(parts) == 2 else 0
+            oldest = f"{parts[0]}.{micro:06d}"
+        return {
+            "ok": True,
+            "seeds": results,
+            "channels": [r["channel"] for r in results],
+            "oldest_ts": oldest,
+            "api_root": api_root,
+        }
+
+    seed = (annotations or {}).get("crabline_seed")
+    if not seed:
+        return None
+    result = _seed_one(seed, api_root, token)
+    result["api_root"] = api_root
     return result

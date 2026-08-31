@@ -168,3 +168,51 @@ def score_threaded_answer(
         )
     need = f"answer={answer!r}" + (f" and marker={marker!r}" if marker else "")
     return False, f"no accepted threaded chat.postMessage containing {need}"
+
+
+def score_read_code_in_response(
+    outputs: Optional[dict] = None,
+    **_: Any,
+) -> Union[bool, Tuple[bool, str]]:
+    """True when the agent's response contains expected_code from read-only data.
+
+    The code is seeded into Slack history; the agent must read it via
+    conversations.history and report it back.
+    """
+    outputs = outputs or {}
+    ann = outputs.get("annotations") or {}
+    code = (ann.get("expected_code") or "").strip()
+    if not code:
+        return False, "annotations.expected_code is empty"
+    response = (outputs.get("output_content") or "").strip()
+    if not response:
+        return False, "agent response is empty"
+    if code in response:
+        return True, f"response contains code={code!r}"
+    return False, f"response does not contain code={code!r}"
+
+
+def score_channels_listed(
+    outputs: Optional[dict] = None,
+    **_: Any,
+) -> Union[bool, Tuple[bool, str]]:
+    """True when the agent's response contains all expected channel/group/DM IDs.
+
+    Used by :read cases: multiple channels are seeded, and the agent must
+    call conversations.list and report all of them.
+    """
+    outputs = outputs or {}
+    ann = outputs.get("annotations") or {}
+    expected = ann.get("expected_channels")
+    if not expected or not isinstance(expected, list):
+        return False, "annotations.expected_channels is missing or not a list"
+    response = (outputs.get("output_content") or "").strip()
+    if not response:
+        return False, "agent response is empty"
+    missing = [ch for ch in expected if ch not in response]
+    if not missing:
+        return True, f"response contains all {len(expected)} expected channels"
+    return (
+        False,
+        f"response missing {len(missing)}/{len(expected)} channels: {missing}",
+    )
