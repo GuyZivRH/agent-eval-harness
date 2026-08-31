@@ -193,7 +193,7 @@ That writes:
 
 ```text
 eval/openclaw-crabline-agent/eval.yaml
-eval/openclaw-crabline-agent/cases/case-001..005/{input.yaml,annotations.yaml}
+eval/openclaw-crabline-agent/cases/case-001..005,010..018/{input.yaml,annotations.yaml}
 ```
 
 Re-running overwrites those demo files (safe; does not delete `eval/runs/`).
@@ -209,11 +209,23 @@ Eval root: `eval/openclaw-crabline-agent/`
 | **case-003** | Crabline Slack (`UCASE003`) | Threaded reply with answer `4` |
 | **case-004** | smolclaw Calendar | Find seeded code → create event with code + marker |
 | **case-005** | smolclaw Gmail | Find seeded code → send mail with code + marker |
+| **case-010** | smolclaw Gmail (READ) | list-mail-messages: list all inbox messages |
+| **case-011** | smolclaw Gmail (READ) | get-mail-message: read specific message by ID |
+| **case-012** | smolclaw Gmail (READ) | list-mail-folders: list all labels/folders |
+| **case-013** | smolclaw Gmail (READ) | list-mail-folder-messages: read messages in a label |
+| **case-014** | smolclaw Calendar (READ) | list-calendar-events: list events on calendar |
+| **case-015** | smolclaw Calendar (READ) | list-calendars: list available calendars |
+| **case-016** | smolclaw Calendar (READ) | get-calendar-event: read individual event by ID |
+| **case-017** | smolclaw Calendar (READ) | get-calendar-view: list events in a time range |
+| **case-018** | smolclaw Calendar (READ) | get-schedule: query availability/free time |
 
 Slack cases use isolated DM users. Gmail/Calendar cases seed needles via
 `annotations.smolclaw_seed` (host loopback) before the agent runs.
+Gmail READ cases (010–013) and Calendar READ cases (014–018) are **read-only** — the agent reads seeded data and
+reports extracted information; the judge checks the agent's response text, not
+API side effects.
 
-### 2.0b Start smolclaw (Gmail + Calendar) — cases 004/005
+### 2.0b Start smolclaw (Gmail + Calendar) — cases 004/005, 010–018
 
 In addition to Crabline (`:8787`) and the Vertex proxy (`:8000`):
 
@@ -301,7 +313,188 @@ smolclaw_seed:
 Agent searches mail, reads the code, `messages/send`s a raw RFC822 whose
 subject/body include the code + marker.
 
----
+### case-010 — Gmail READ: list-mail-messages
+
+```yaml
+expected_codes:
+  - "Weekly Sprint Review - Action Items"
+  - "URGENT: Deployment approval needed for v3.2.1"
+  - "Database migration plan - Decision needed"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  threaded: false
+  messages:
+    - from: "team-lead@example.com"
+      subject: "Weekly Sprint Review - Action Items"
+      body: "…"
+    - from: "ops-alert@example.com"
+      subject: "URGENT: Deployment approval needed for v3.2.1"
+      body: "…"
+    - from: "carol@example.com"
+      subject: "Database migration plan - Decision needed"
+      body: "…"
+```
+
+Seeds 3 independent emails from different senders with distinct subject lines
+(`threaded: false`). Agent lists inbox messages (`GET users/me/messages`), reads
+each one, and reports all subject lines. Judge checks all 3 subjects appear in
+the response.
+
+### case-011 — Gmail READ: get-mail-message
+
+```yaml
+expected_code: "GMAIL-READ-CODE-011"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  from: "project-updates@example.com"
+  subject: "Project Status Update Q4"
+  body: "… Confirmation code: GMAIL-READ-CODE-011 …"
+```
+
+Seeds 1 email with a code in the body. The seeded message ID is passed to the
+agent via `SMOLCLAW_SEED_MESSAGE_ID`. Agent reads that specific message
+(`GET users/me/messages/<id>?format=full`) and extracts the code. Judge checks
+the response text.
+
+### case-012 — Gmail READ: list-mail-folders
+
+```yaml
+expected_codes:
+  - "inbox"
+  - "sent"
+  - "draft"
+  - "AEH-Project-Tracking"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  create_labels:
+    - "AEH-Project-Tracking"
+```
+
+Seeds 1 custom label (`AEH-Project-Tracking`) via `POST users/me/labels`.
+Agent lists all labels (`GET users/me/labels`) and reports them. Judge checks
+the response contains default labels (inbox, sent, draft) and the custom label.
+
+### case-013 — Gmail READ: list-mail-folder-messages
+
+```yaml
+expected_code: "FOLDER-MSG-CODE-013"
+smolclaw_kind: gmail
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: gmail
+  create_labels:
+    - "AEH-Project-Tracking"
+  seed_to_label: "AEH-Project-Tracking"
+  from: "milestone-tracker@example.com"
+  subject: "Q4 Milestone Status Report"
+  body: "… Tracking code: FOLDER-MSG-CODE-013 …"
+```
+
+Seeds a custom label and 1 email tagged with that label. Agent lists labels
+to find `AEH-Project-Tracking` and its ID, then lists messages in that label
+(`GET users/me/messages?labelIds=<id>`), reads the message, and extracts the
+code. Judge checks the response text.
+
+### case-014 — Calendar READ: list-calendar-events
+
+```yaml
+expected_codes:
+  - "Team Standup - Project Alpha"
+  - "Architecture Review Board"
+  - "Sprint Planning Q4"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  events:
+    - summary: "Team Standup - Project Alpha"
+    - summary: "Architecture Review Board"
+    - summary: "Sprint Planning Q4"
+```
+
+Seeds 3 events with distinct summaries on primary calendar. Agent lists events
+(`GET calendars/primary/events`) and reports all summaries. Judge checks all 3
+event summaries appear in the response.
+
+### case-015 — Calendar READ: list-calendars
+
+```yaml
+expected_codes:
+  - "AEH-Team-Calendar"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  create_calendars:
+    - "AEH-Team-Calendar"
+```
+
+Seeds 1 secondary calendar (`AEH-Team-Calendar`) via `POST /calendars`. Agent
+lists all calendars (`GET users/me/calendarList`) and reports them. Judge checks
+the custom calendar name appears in the response.
+
+### case-016 — Calendar READ: get-calendar-event
+
+```yaml
+expected_code: "CAL-EVENT-CODE-016"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  summary: "Quarterly Business Review"
+  description: "… Confirmation code: CAL-EVENT-CODE-016 …"
+```
+
+Seeds 1 event with a code in the description. The seeded event ID is passed to
+the agent via `SMOLCLAW_SEED_EVENT_ID`. Agent reads that specific event
+(`GET calendars/primary/events/<id>`) and extracts the code. Judge checks the
+response text.
+
+### case-017 — Calendar READ: get-calendar-view
+
+```yaml
+expected_code: "CAL-VIEW-CODE-017"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  summary: "Sprint Demo Session"
+  description: "… Confirmation code: CAL-VIEW-CODE-017 …"
+  start: "2026-08-26T14:00:00Z"
+  end: "2026-08-26T15:00:00Z"
+```
+
+Seeds 1 event in a specific time range. Agent queries events with `timeMin`/`timeMax`
+parameters (`GET calendars/primary/events?timeMin=...&timeMax=...`) and extracts
+the code from the event in that range. Judge checks the response text.
+
+### case-018 — Calendar READ: get-schedule
+
+```yaml
+expected_code: "CAL-SCHED-CODE-018"
+smolclaw_kind: calendar
+smolclaw_read_only: true
+smolclaw_seed:
+  kind: calendar
+  calendar_id: primary
+  summary: "Team Sync Meeting"
+  description: "… Scheduling code: CAL-SCHED-CODE-018 …"
+  start: "2026-08-27T09:00:00Z"
+  end: "2026-08-27T10:00:00Z"
+```
+
+Seeds 1 event with a specific time. Agent queries the calendar for a date range,
+determines free/busy time slots from event times, and extracts the scheduling code.
+Judge checks the response text.
 
 ## Part 3 — What we are checking
 
@@ -313,14 +506,16 @@ No LLM judges in the default runner (`--no-llm-judges`).
 | **crabline_accepted_post** | `slack_user` set | Recorder has accepted `chat.postMessage` with `expected_text` |
 | **crabline_code_in_post** | Slack + `expected_code` | Post contains code + marker |
 | **crabline_threaded_answer** | `expect_thread_reply` | Threaded post with answer + marker |
-| **smolclaw_calendar_event** | `smolclaw_kind == calendar` | Primary calendar has event with code + marker |
-| **smolclaw_gmail_message** | `smolclaw_kind == gmail` | Gmail has message with code + marker |
+| **smolclaw_calendar_event** | `smolclaw_kind == calendar` (write) | Primary calendar has event with code + marker |
+| **smolclaw_calendar_read** | `smolclaw_kind == calendar` + `smolclaw_read_only` | Agent response contains expected code from seeded calendar event |
+| **smolclaw_gmail_message** | `smolclaw_kind == gmail` (write) | Gmail has message with code + marker |
+| **smolclaw_gmail_read** | `smolclaw_kind == gmail` + `smolclaw_read_only` | Agent response contains expected code from seeded email |
 | **used_exec_tool** | always | Trajectory includes real `exec` |
 | **response_received** | always | Non-empty final agent response |
 
 Implementations: `agent_eval/openshell/crabline_score.py`,
 `agent_eval/openshell/smolclaw_score.py`.
----
+
 
 ## Part 4 — Bash runner (recommended)
 
@@ -351,6 +546,8 @@ cd /Users/gziv/Dev/agent-eval-harness
 ./examples/run-openclaw-crabline-agent-eval.sh
 # Gmail/Calendar only:
 #   ./examples/run-openclaw-crabline-agent-eval.sh --cases case-004 case-005
+# Gmail READ only:
+#   ./examples/run-openclaw-crabline-agent-eval.sh --cases case-010 case-011 case-012 case-013
 ```
 
 Optional flags are passed through to AEH:
@@ -471,6 +668,10 @@ Healthy patterns:
 | 001 | `conversations.open` → `chat.postMessage` (marker) |
 | 002 | `open` → `conversations.history` → `postMessage` (`ORANGE-7` + marker) |
 | 003 | `open` → `history` → `postMessage` with `thread_ts` (`4` + marker) |
+| 010 | `users/me/messages` → multiple `messages/<id>?format=full` (3 subjects) |
+| 011 | `users/me/messages/<id>?format=full` (single message by ID) |
+| 012 | `users/me/labels` (list labels) |
+| 013 | `users/me/messages?labelIds=<id>` → `messages/<id>?format=full` |
 
 ### 5.3 Crabline recorder hits
 
@@ -537,7 +738,7 @@ kill "$(cat .tmp/crabline/serve.pid)" 2>/dev/null
 | [openshell-openclaw-e2e.md](./openshell-openclaw-e2e.md) | Prerequisite stack (OpenShell + Quay + Vertex proxy) |
 | `examples/start-crabline-slack.sh` | Host Crabline Slack mock |
 | `examples/start-smolclaw.sh` | Host smolclaw Gmail (:8001) + Calendar (:8002) |
-| `examples/bootstrap-openclaw-crabline-agent-eval.sh` | Generate agent `eval.yaml` + cases 001–005 |
+| `examples/bootstrap-openclaw-crabline-agent-eval.sh` | Generate agent `eval.yaml` + cases 001–005, 010–018 |
 | `examples/bootstrap-openclaw-crabline-eval.sh` | Generate Phase 1.5 CLI eval package |
 | `examples/run-openclaw-crabline-agent-eval.sh` | Full agent suite runner |
 | `examples/run-openclaw-crabline-eval.sh` | Phase 1.5 CLI (no agent) Crabline canary suite |
