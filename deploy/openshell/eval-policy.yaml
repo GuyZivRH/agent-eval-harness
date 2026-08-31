@@ -1,0 +1,129 @@
+# eval-policy.yaml - Policy for agent evaluation runs
+#
+# Default OpenShell policy denies all egress. This policy allows model API
+# access for evaluation. Uses OpenShell's v1 schema.
+#
+# Usage:
+#   export AGENT_EVAL_OPENSHELL_POLICY=/path/to/eval-policy.yaml
+#   python -m agent_eval.openshell.run --config eval.yaml --model <model>
+#
+# For production, prefer OpenShell providers over direct API access:
+#   openshell provider create --name anthropic --type anthropic --from-existing
+#   export AGENT_EVAL_OPENSHELL_PROVIDER=anthropic
+
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /usr
+    - /lib
+    - /lib64
+    - /etc
+    - /bin
+    - /sbin
+    - /opt/openclaw  # Required for Quay OpenClaw image (installed under /opt)
+  read_write:
+    - /sandbox
+    - /tmp
+    - /dev/null
+    - /dev/urandom
+
+landlock:
+  compatibility: best_effort
+
+# Network egress rules - per binary that actually dials out
+# OpenClaw is Node-based, so allow node to reach model APIs
+network_policies:
+  anthropic:
+    name: anthropic-api
+    endpoints:
+      - host: api.anthropic.com
+        port: 443
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+
+  openai:
+    name: openai-api
+    endpoints:
+      - host: api.openai.com
+        port: 443
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+
+  vertex:
+    name: vertex-ai
+    endpoints:
+      - host: "*.googleapis.com"
+        port: 443
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+
+  # OpenShell inference relay (maps to host Claude/LiteLLM proxy via provider)
+  inference_local:
+    name: inference-local
+    endpoints:
+      - host: inference.local
+        port: 443
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Host-side Crabline Slack mock (AEH OpenClaw channel eval)
+  # Bind Crabline with: --host 0.0.0.0 --port 8787
+  crabline_slack:
+    name: crabline-slack-host
+    endpoints:
+      - host: host.openshell.internal
+        port: 8787
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+      - path: /usr/bin/curl
+
+  # Host-side smolclaw Gmail mock (default :8001)
+  smolclaw_gmail:
+    name: smolclaw-gmail-host
+    endpoints:
+      - host: host.openshell.internal
+        port: 8001
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Host-side smolclaw Calendar mock (default :8002)
+  smolclaw_gcal:
+    name: smolclaw-gcal-host
+    endpoints:
+      - host: host.openshell.internal
+        port: 8002
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs

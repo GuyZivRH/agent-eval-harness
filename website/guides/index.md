@@ -136,6 +136,14 @@ The same `eval.yaml` runs unchanged across execution backends — the backend is
 
     [:octicons-arrow-right-24: Run on Harbor](harbor.md)
 
+-   :material-shield-lock: **OpenShell (policy-enforced)**
+
+    ---
+
+    Run in OpenShell sandboxes with filesystem and network policies.
+
+    [:octicons-arrow-right-24: Run on OpenShell](openshell.md)
+
 -   :material-cloud-cog: **EvalHub**
 
     ---

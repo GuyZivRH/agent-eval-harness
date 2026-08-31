@@ -1,0 +1,24 @@
+# OpenClaw sandbox image for OpenShell evaluations
+#
+# This image provides a minimal Node.js environment with OpenClaw pre-installed.
+# Used with agent-eval-harness's OpenShell backend (--runner openshell).
+#
+# Build:
+#   podman build -f deploy/openshell/Containerfile -t quay.io/<org>/openclaw-sandbox:v1.0.0
+#
+# The harness uploads the workspace to /sandbox and executes openclaw there.
+# OpenShell enforces policies (filesystem, network) defined in eval-policy.yaml.
+
+FROM node:22-slim
+
+# Pin OpenClaw version for reproducible evaluations
+# Update this when upgrading OpenClaw
+ARG OPENCLAW_VERSION=1.2.3
+RUN npm install -g openclaw@${OPENCLAW_VERSION}
+
+# Create sandbox directory with correct permissions
+WORKDIR /sandbox
+RUN mkdir -p /sandbox/.openclaw-state && chmod 755 /sandbox
+
+# OpenClaw reads API keys from environment (--auth-env-only)
+# Keys are injected via OpenShell providers or sandbox exec --env

@@ -553,6 +553,8 @@ class RunnerConfig:
     # Passed as --permission-mode (a CLI flag), so it applies even in untrusted
     # isolated workspaces where settings-file permissions are trust-gated.
     permission_mode: Optional[str] = None
+    # OpenClaw: custom provider configuration for inference.local routing
+    providers: Optional[dict] = None
 
 
 def _parse_runner_config(runner_raw, *, context="runner"):
@@ -598,6 +600,7 @@ def _parse_runner_config(runner_raw, *, context="runner"):
         system_prompt=runner_raw.get("system_prompt"),
         effort=runner_raw.get("effort"),
         permission_mode=runner_raw.get("permission_mode"),
+        providers=runner_raw.get("providers"),
     )
 
 

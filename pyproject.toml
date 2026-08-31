@@ -59,8 +59,11 @@ claude-trace = "agent_eval.cli.trace_run:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not e2e'"
-markers = ["e2e: end-to-end tests requiring Claude API (deselected by default)"]
+addopts = "-m 'not e2e and not openshell'"
+markers = [
+    "e2e: end-to-end tests requiring Claude API (deselected by default)",
+    "openshell: tests requiring OpenShell gateway (deselected by default)",
+]
 
 [tool.setuptools.packages.find]
 include = ["agent_eval*"]

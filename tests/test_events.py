@@ -13,6 +13,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "eval-run" / "s
 from agent_eval.events import (
     parse_stream_events, merge_subagent_transcripts, extract_conversation_text,
     extract_read_calls, _codex_command_read_paths,
+    build_explicit_openclaw_session_key,
+    events_from_openclaw_exec,
+    parse_openclaw_trajectory_events,
+    resolve_openclaw_session_key_from_list,
 )
 from conftest import (
     make_assistant, make_result, make_system_init, make_user,
@@ -943,3 +947,111 @@ class TestEdgeCases:
         result = parse_stream_events(stdout)
         assert len(result) == 1
         assert result[0]["type"] == "system"
+
+
+# ---------------------------------------------------------------------------
+# OpenClaw trajectory export → AEH events (Quay 2026.7.x)
+# ---------------------------------------------------------------------------
+
+class TestOpenClawTrajectoryEvents:
+    def test_explicit_session_key(self):
+        assert (
+            build_explicit_openclaw_session_key("16c86e09-8820-48c0-b6e3-d2b85e20cb93")
+            == "agent:main:explicit:16c86e09-8820-48c0-b6e3-d2b85e20cb93"
+        )
+        assert (
+            build_explicit_openclaw_session_key("abc", agent_id="ops")
+            == "agent:ops:explicit:abc"
+        )
+
+    def test_parse_trajectory_user_assistant_tools_thinking(self):
+        lines = [
+            {
+                "traceSchema": "openclaw-trajectory",
+                "type": "user.message",
+                "ts": "2026-01-01T00:00:00Z",
+                "data": {"message": {"role": "user", "content": "Capital of France?"}},
+            },
+            {
+                "traceSchema": "openclaw-trajectory",
+                "type": "assistant.message",
+                "ts": "2026-01-01T00:00:01Z",
+                "data": {
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "thinking", "thinking": "recall geography"},
+                            {"type": "text", "text": "Paris"},
+                            {
+                                "type": "tool_use",
+                                "id": "tu_1",
+                                "name": "Read",
+                                "input": {"path": "/sandbox/note.md"},
+                            },
+                        ],
+                    }
+                },
+            },
+            {
+                "traceSchema": "openclaw-trajectory",
+                "type": "tool.call",
+                "ts": "2026-01-01T00:00:01Z",
+                "data": {"toolCallId": "tu_1", "name": "Read"},
+            },
+            {
+                "traceSchema": "openclaw-trajectory",
+                "type": "prompt.submitted",
+                "ts": "2026-01-01T00:00:00Z",
+                "data": {},
+            },
+            {
+                "traceSchema": "openclaw-trajectory",
+                "type": "tool.result",
+                "ts": "2026-01-01T00:00:02Z",
+                "data": {
+                    "message": {
+                        "role": "toolResult",
+                        "toolCallId": "tu_1",
+                        "toolName": "Read",
+                        "content": "Paris is the capital",
+                    }
+                },
+            },
+        ]
+        text = "\n".join(json.dumps(line) for line in lines)
+        events = parse_openclaw_trajectory_events(text)
+        types = [e["type"] for e in events]
+        assert types == ["user", "assistant", "tool_result"]
+        assert events[0]["text"] == "Capital of France?"
+        assert events[1]["text"] == "Paris"
+        assert events[1]["thinking"] == "recall geography"
+        assert events[1]["tools"][0]["name"] == "Read"
+        assert events[2]["tool_name"] == "Read"
+        assert "Paris is the capital" in events[2]["result"]
+
+    def test_envelope_fallback_still_works(self):
+        envelope = json.dumps({
+            "ok": True,
+            "final": "Paris",
+            "sessionId": "abc",
+            "model": "claude-sonnet-4",
+        })
+        events = events_from_openclaw_exec(envelope, prompt="Capital?")
+        assert [e["type"] for e in events] == ["user", "assistant"]
+        assert events[1]["text"] == "Paris"
+
+    def test_resolve_session_key_from_list(self):
+        payload = {
+            "sessions": [
+                {"key": "agent:main:main", "sessionId": "other"},
+                {
+                    "key": "agent:main:explicit:wanted",
+                    "sessionId": "wanted",
+                },
+            ]
+        }
+        assert (
+            resolve_openclaw_session_key_from_list(json.dumps(payload), "wanted")
+            == "agent:main:explicit:wanted"
+        )
+        assert resolve_openclaw_session_key_from_list(json.dumps(payload), "missing") is None

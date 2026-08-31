@@ -810,3 +810,379 @@ def extract_conversation_text(events, include_thinking=False):
         rendered = (rendered[:CONVERSATION_THINKING_CAP]
                     + "\n\n[conversation truncated]")
     return rendered
+
+
+def parse_openclaw_session(session_text, result_cap=DEFAULT_RESULT_CAP):
+    """Parse OpenClaw session JSONL into the flat event schema.
+
+    OpenClaw stores conversations in session files with entries like:
+    - {"type": "message", "message": {"role": "user", "content": "..."}}
+    - {"type": "message", "message": {"role": "assistant", "content": [...]}}
+    - {"type": "thinking_level_change", "thinkingLevel": "high"}
+    - {"type": "model_change", "provider": "...", "modelId": "..."}
+
+    This translates them into the same flat schema as parse_stream_events().
+
+    Args:
+        session_text: Raw JSONL text from OpenClaw session file.
+        result_cap: Max characters per tool result/input string value.
+
+    Returns:
+        List of event dicts in the normalized format.
+    """
+    if not session_text:
+        return []
+
+    events = []
+    tool_id_to_name = {}
+
+    for line in session_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        entry_type = obj.get("type")
+        timestamp = obj.get("timestamp")
+
+        if entry_type == "message":
+            message = obj.get("message", {})
+            role = message.get("role")
+            content = message.get("content")
+
+            if role == "user":
+                # User message - could be text or tool results
+                if isinstance(content, str):
+                    events.append({
+                        "type": "user",
+                        "text": content,
+                        "timestamp": timestamp,
+                    })
+                elif isinstance(content, list):
+                    # Tool results
+                    for block in content:
+                        block_type = block.get("type")
+                        if block_type == "tool_result":
+                            tool_id = block.get("tool_use_id", "")
+                            result_content = block.get("content", "")
+                            if isinstance(result_content, list):
+                                result_content = "\n".join(
+                                    b.get("text", "") for b in result_content
+                                    if isinstance(b, dict) and b.get("type") == "text"
+                                )
+                            if len(result_content) > result_cap:
+                                result_content = result_content[:result_cap] + "..."
+                            events.append({
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "tool_name": tool_id_to_name.get(tool_id, "unknown"),
+                                "result": result_content,
+                                "is_error": block.get("is_error", False),
+                                "timestamp": timestamp,
+                            })
+
+            elif role == "assistant":
+                text_parts = []
+                tools = []
+                thinking = ""
+
+                if isinstance(content, str):
+                    text_parts.append(content)
+                elif isinstance(content, list):
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        block_type = block.get("type")
+                        if block_type == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif block_type == "thinking":
+                            thinking = block.get("thinking", "")
+                        elif block_type in ("tool_use", "toolUse", "toolCall", "function_call"):
+                            tool_id = block.get("id") or block.get("call_id", "")
+                            tool_name = block.get("name", "unknown")
+                            tool_input = block.get("input") or block.get("arguments", {})
+                            if isinstance(tool_input, str):
+                                try:
+                                    tool_input = json.loads(tool_input)
+                                except (json.JSONDecodeError, ValueError):
+                                    tool_input = {"raw": tool_input}
+                            tool_id_to_name[tool_id] = tool_name
+                            tools.append({
+                                "id": tool_id,
+                                "name": tool_name,
+                                "input": _cap_tool_input(tool_input, result_cap),
+                            })
+
+                events.append({
+                    "type": "assistant",
+                    "text": "\n".join(text_parts),
+                    "tools": tools,
+                    "timestamp": timestamp,
+                    **({"thinking": thinking} if thinking else {}),
+                })
+
+            elif role == "toolResult":
+                # Alternative tool result format
+                tool_id = message.get("toolCallId", "")
+                tool_name = message.get("toolName", tool_id_to_name.get(tool_id, "unknown"))
+                result_content = message.get("content", "")
+                if isinstance(result_content, list):
+                    result_content = "\n".join(
+                        b.get("text", "") for b in result_content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+                if len(result_content) > result_cap:
+                    result_content = result_content[:result_cap] + "..."
+                events.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "tool_name": tool_name,
+                    "result": result_content,
+                    "is_error": message.get("isError", False),
+                    "timestamp": timestamp,
+                })
+
+        elif entry_type == "thinking_level_change":
+            # Record thinking level changes for context
+            events.append({
+                "type": "system",
+                "subtype": "thinking_level",
+                "thinking_level": obj.get("thinkingLevel"),
+                "timestamp": timestamp,
+            })
+
+        elif entry_type == "model_change":
+            events.append({
+                "type": "system",
+                "subtype": "model_change",
+                "provider": obj.get("provider"),
+                "model": obj.get("modelId"),
+                "timestamp": timestamp,
+            })
+
+    return events
+
+
+def events_from_openclaw_exec(stdout_text, prompt=None):
+    """Build events from an OpenClaw ``agent exec --json`` envelope.
+
+    Quay OpenClaw 2026.7.x returns a compact envelope (``final``, ``payloads``,
+    ``sessionId``) and does not emit Claude-style stream-json or a JSONL
+    ``sessionFile``. For those runs we synthesize the minimal user/assistant
+    events judges and reports expect.
+
+    Prefer :func:`parse_openclaw_trajectory_events` when a trajectory export
+    ``events.jsonl`` is available (tools, thinking, full transcript).
+
+    Args:
+        stdout_text: Raw stdout from ``openclaw agent exec --json``.
+        prompt: Optional user prompt (preferred for the user event). When
+            omitted, only an assistant event is emitted if a final answer
+            is present.
+
+    Returns:
+        List of event dicts in the normalized flat schema, or ``[]`` if
+        stdout is not a recognizable OpenClaw envelope.
+    """
+    data = _parse_openclaw_json_object(stdout_text)
+    if not data:
+        return []
+
+    # Legacy / richer envelopes with nested meta still prefer sessionFile
+    # parsing when callers have already loaded JSONL; this helper only
+    # synthesizes from the envelope itself.
+    if "final" not in data and "payloads" not in data and "ok" not in data:
+        return []
+
+    events = []
+    if prompt:
+        events.append({
+            "type": "user",
+            "text": prompt,
+            "timestamp": None,
+        })
+
+    response = data.get("final") or ""
+    if not response:
+        payloads = data.get("payloads") or []
+        if payloads and isinstance(payloads[0], dict):
+            response = payloads[0].get("text") or ""
+
+    if response:
+        events.append({
+            "type": "assistant",
+            "text": response,
+            "timestamp": None,
+            "model": data.get("model"),
+        })
+
+    return events
+
+
+def build_explicit_openclaw_session_key(session_id, agent_id="main"):
+    """Session key OpenClaw uses for ``agent exec`` (session-id-only) runs.
+
+    Matches ``buildExplicitSessionIdSessionKey`` in OpenClaw 2026.7.x:
+    ``agent:<agentId>:explicit:<sessionId>``.
+    """
+    if not session_id or not str(session_id).strip():
+        raise ValueError("session_id is required")
+    agent = (agent_id or "main").strip() or "main"
+    return f"agent:{agent}:explicit:{str(session_id).strip()}"
+
+
+def parse_openclaw_trajectory_events(events_jsonl_text, result_cap=DEFAULT_RESULT_CAP):
+    """Parse OpenClaw ``sessions export-trajectory`` ``events.jsonl``.
+
+    Trajectory transcript events (``user.message``, ``assistant.message``,
+    ``tool.result``, thinking/model changes) are projected into the same
+    session-message shape :func:`parse_openclaw_session` already understands.
+    Runtime-only rows (``prompt.submitted``, ``tool.call`` duplicates, …)
+    are skipped — tool calls are taken from assistant message content.
+
+    Args:
+        events_jsonl_text: Raw contents of the export bundle's ``events.jsonl``.
+        result_cap: Max characters per tool result/input string value.
+
+    Returns:
+        List of event dicts in the normalized flat schema.
+    """
+    if not events_jsonl_text:
+        return []
+
+    session_lines = []
+    for line in events_jsonl_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+
+        event_type = obj.get("type") or ""
+        timestamp = obj.get("ts") or obj.get("timestamp")
+        data = obj.get("data") if isinstance(obj.get("data"), dict) else {}
+
+        if event_type in ("user.message", "assistant.message", "tool.result"):
+            message = data.get("message")
+            if isinstance(message, dict):
+                session_lines.append(json.dumps({
+                    "type": "message",
+                    "timestamp": timestamp,
+                    "message": message,
+                }))
+        elif event_type == "session.thinking_level_change":
+            session_lines.append(json.dumps({
+                "type": "thinking_level_change",
+                "timestamp": timestamp,
+                "thinkingLevel": data.get("thinkingLevel"),
+            }))
+        elif event_type == "session.model_change":
+            session_lines.append(json.dumps({
+                "type": "model_change",
+                "timestamp": timestamp,
+                "provider": data.get("provider"),
+                "modelId": data.get("modelId"),
+            }))
+
+    return parse_openclaw_session("\n".join(session_lines), result_cap=result_cap)
+
+
+def resolve_openclaw_session_key_from_list(sessions_json_text, session_id):
+    """Pick a ``sessionKey`` from ``openclaw sessions --json`` for ``session_id``.
+
+    Returns the matching key, or ``None`` if not found / unparseable.
+    """
+    if not session_id or not sessions_json_text:
+        return None
+    raw = str(sessions_json_text).strip()
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        data = _parse_openclaw_json_object(raw)
+        if data is None:
+            return None
+
+    if isinstance(data, list):
+        sessions = data
+    elif isinstance(data, dict):
+        sessions = data.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+    else:
+        return None
+
+    target = str(session_id).strip()
+    for entry in sessions:
+        if not isinstance(entry, dict):
+            continue
+        entry_id = entry.get("sessionId") or entry.get("id")
+        if entry_id is not None and str(entry_id).strip() == target:
+            key = entry.get("key") or entry.get("sessionKey")
+            if isinstance(key, str) and key.strip():
+                return key.strip()
+    return None
+
+
+def resolve_openclaw_session_file(openclaw_json):
+    """Return a session JSONL path from an OpenClaw exec envelope, if any.
+
+    Older OpenClaw builds put ``meta.agentMeta.sessionFile`` in stdout.
+    Quay 2026.7.x only exposes ``sessionId`` and stores state in SQLite
+    without a harvestable JSONL transcript.
+    """
+    if not isinstance(openclaw_json, dict):
+        return None
+    meta = openclaw_json.get("meta") or {}
+    agent_meta = meta.get("agentMeta") or {}
+    session_file = agent_meta.get("sessionFile")
+    if session_file:
+        return session_file
+    return None
+
+
+def _parse_openclaw_json_object(text):
+    """Parse a JSON object from text that may include leading log lines."""
+    if not text or not str(text).strip():
+        return None
+    raw = str(text).strip()
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, ValueError):
+        pass
+    start = raw.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    end = start
+    for i, c in enumerate(raw[start:], start):
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    try:
+        data = json.loads(raw[start:end])
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _cap_tool_input(tool_input, result_cap):
+    """Recursively cap string values in tool input."""
+    if isinstance(tool_input, str):
+        return tool_input[:result_cap] + "..." if len(tool_input) > result_cap else tool_input
+    if isinstance(tool_input, dict):
+        return {k: _cap_tool_input(v, result_cap) for k, v in tool_input.items()}
+    if isinstance(tool_input, list):
+        return [_cap_tool_input(v, result_cap) for v in tool_input]
+    return tool_input
