@@ -1,3 +1,10 @@
+# [1.44.0](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.43.2...v1.44.0) (2026-08-31)
+
+
+### Features
+
+* **scoring:** elicit judge rationale before verdict in structured outputs ([17ddd70](https://github.com/opendatahub-io/agent-eval-harness/commit/17ddd704b53e3f2eede3ae98030f459d9598404b))
+
 ## [1.43.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.43.1...v1.43.2) (2026-08-31)
 
 
