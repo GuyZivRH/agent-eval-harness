@@ -302,6 +302,55 @@ def _resolve_prompt(config: EvalConfig, case_data: dict) -> str:
         return re.sub(r"\{(\w+\??)\}", replacer, template).strip()
 
 
+def _load_scene(config: EvalConfig) -> Optional[dict]:
+    """Load scene YAML if configured. Return parsed dict or None."""
+    raw_path = config.config_path
+    if not raw_path:
+        return None
+    with open(raw_path) as f:
+        raw = yaml.safe_load(f) or {}
+    scene_name = raw.get("scene")
+    if not scene_name:
+        return None
+    scene_path = raw_path.parent / "scenes" / f"{scene_name}.yaml"
+    if not scene_path.is_file():
+        raise FileNotFoundError(f"Scene file not found: {scene_path}")
+    logger.info("Loading scene: %s", scene_path)
+    return yaml.safe_load(scene_path.read_text(encoding="utf-8")) or {}
+
+
+def _setup_scene(config: EvalConfig, output_dir: Path) -> bool:
+    """Seed scene data into Crabline + smolclaw once. Return True if a scene was seeded."""
+    scene = _load_scene(config)
+    if not scene:
+        return False
+
+    from agent_eval.openshell.crabline_seed import seed_crabline_for_scene
+    from agent_eval.openshell.smolclaw_seed import seed_smolclaw_for_scene
+
+    all_meta = {}
+
+    crabline_seeds = scene.get("crabline_seeds") or []
+    if crabline_seeds:
+        logger.info("Seeding %d Crabline messages for scene...", len(crabline_seeds))
+        crabline_meta = seed_crabline_for_scene(crabline_seeds)
+        all_meta["crabline"] = crabline_meta
+
+    smolclaw_seeds = scene.get("smolclaw_seeds") or []
+    if smolclaw_seeds:
+        logger.info("Seeding %d smolclaw items for scene...", len(smolclaw_seeds))
+        smolclaw_meta = seed_smolclaw_for_scene(smolclaw_seeds)
+        all_meta["smolclaw"] = smolclaw_meta
+
+    # Persist scene seed metadata for debugging
+    (output_dir / "scene-seed.json").write_text(
+        json.dumps(all_meta, indent=2, default=str), encoding="utf-8"
+    )
+    logger.info("Scene seeded: %d Slack + %d Gmail/Calendar",
+                len(crabline_seeds), len(smolclaw_seeds))
+    return True
+
+
 async def run_openshell(
     config_path: Path,
     model: str,
@@ -389,11 +438,14 @@ async def run_openshell(
     case_dirs = sorted((workspace_root / "cases").iterdir())
     start_time = time.monotonic()
 
+    # Scene seeding — seed once before all cases
+    scene_active = _setup_scene(config, output_dir)
+
     # 2. Run cases in sandboxes (parallel, with error isolation)
     sem = asyncio.Semaphore(parallelism)
     tasks = [
         _run_case(
-            sandbox_mgr, config, case_dir, model, image, output_dir, sem, keep_sandbox
+            sandbox_mgr, config, case_dir, model, image, output_dir, sem, keep_sandbox, scene_active
         )
         for case_dir in case_dirs
     ]
@@ -546,6 +598,7 @@ async def _run_case(
     output_dir: Path,
     sem: asyncio.Semaphore,
     keep: bool,
+    scene_active: bool = False,
 ) -> dict:
     """Run single case in sandbox.
 
@@ -561,6 +614,7 @@ async def _run_case(
         output_dir: Run output directory (runs/<run-id>/).
         sem: Semaphore for parallelism control.
         keep: Keep sandbox after trial.
+        scene_active: Skip per-case seeding when True (scene was seeded at run start).
 
     Returns:
         Case result dict for suite per_case.
@@ -593,63 +647,65 @@ async def _run_case(
                 # OpenClaw agent exec has no --append-system-prompt; prepend.
                 prompt = f"{str(system_prompt).strip()}\n\n{prompt}"
 
-            # Optional host-side seeds (Crabline Slack / smolclaw Gmail|Calendar)
-            from agent_eval.openshell.crabline_seed import (
-                load_case_annotations,
-                seed_crabline_for_case,
-            )
-            from agent_eval.openshell.smolclaw_seed import seed_smolclaw_for_case
-
-            case_annotations = load_case_annotations(config, case_id)
+            # Skip per-case seeding when a scene was seeded at run start
             sandbox_env_extra: dict[str, str] = {}
-            try:
-                seed_meta = seed_crabline_for_case(case_annotations)
-            except Exception as e:
-                logger.error("Crabline seed failed for %s: %s", case_id, e)
-                raise
-            if seed_meta:
-                seed_path = case_output / "crabline-seed.json"
-                seed_path.write_text(json.dumps(seed_meta, indent=2), encoding="utf-8")
-                # Non-secret metadata for the agent (not the seeded text/code).
-                sandbox_env_extra.update(
-                    {
-                        "CRABLINE_SEED_CHANNEL": str(seed_meta.get("channel") or ""),
-                        "CRABLINE_SEED_TS": str(seed_meta.get("ts") or ""),
-                        "CRABLINE_SEED_OLDEST": str(seed_meta.get("oldest_ts") or ""),
-                        "CRABLINE_CASE_USER": str(
-                            case_annotations.get("slack_user")
-                            or (case_annotations.get("crabline_seed") or {}).get("users")
-                            or ""
-                        ),
-                    }
+            if not scene_active:
+                # Optional host-side seeds (Crabline Slack / smolclaw Gmail|Calendar)
+                from agent_eval.openshell.crabline_seed import (
+                    load_case_annotations,
+                    seed_crabline_for_case,
                 )
-            else:
-                slack_user = str(case_annotations.get("slack_user") or "")
-                if slack_user:
-                    sandbox_env_extra["CRABLINE_CASE_USER"] = slack_user
+                from agent_eval.openshell.smolclaw_seed import seed_smolclaw_for_case
 
-            try:
-                smol_meta = seed_smolclaw_for_case(case_annotations)
-            except Exception as e:
-                logger.error("smolclaw seed failed for %s: %s", case_id, e)
-                raise
-            if smol_meta:
-                (case_output / "smolclaw-seed.json").write_text(
-                    json.dumps(smol_meta, indent=2), encoding="utf-8"
-                )
-                kind = str(smol_meta.get("kind") or "")
-                if kind == "calendar" and smol_meta.get("event_id"):
-                    sandbox_env_extra["SMOLCLAW_SEED_EVENT_ID"] = str(
-                        smol_meta["event_id"]
+                case_annotations = load_case_annotations(config, case_id)
+                try:
+                    seed_meta = seed_crabline_for_case(case_annotations)
+                except Exception as e:
+                    logger.error("Crabline seed failed for %s: %s", case_id, e)
+                    raise
+                if seed_meta:
+                    seed_path = case_output / "crabline-seed.json"
+                    seed_path.write_text(json.dumps(seed_meta, indent=2), encoding="utf-8")
+                    # Non-secret metadata for the agent (not the seeded text/code).
+                    sandbox_env_extra.update(
+                        {
+                            "CRABLINE_SEED_CHANNEL": str(seed_meta.get("channel") or ""),
+                            "CRABLINE_SEED_TS": str(seed_meta.get("ts") or ""),
+                            "CRABLINE_SEED_OLDEST": str(seed_meta.get("oldest_ts") or ""),
+                            "CRABLINE_CASE_USER": str(
+                                case_annotations.get("slack_user")
+                                or (case_annotations.get("crabline_seed") or {}).get("users")
+                                or ""
+                            ),
+                        }
                     )
-                if kind == "gmail" and smol_meta.get("message_id"):
-                    sandbox_env_extra["SMOLCLAW_SEED_MESSAGE_ID"] = str(
-                        smol_meta["message_id"]
+                else:
+                    slack_user = str(case_annotations.get("slack_user") or "")
+                    if slack_user:
+                        sandbox_env_extra["CRABLINE_CASE_USER"] = slack_user
+
+                try:
+                    smol_meta = seed_smolclaw_for_case(case_annotations)
+                except Exception as e:
+                    logger.error("smolclaw seed failed for %s: %s", case_id, e)
+                    raise
+                if smol_meta:
+                    (case_output / "smolclaw-seed.json").write_text(
+                        json.dumps(smol_meta, indent=2), encoding="utf-8"
                     )
-                    if smol_meta.get("thread_id"):
-                        sandbox_env_extra["SMOLCLAW_SEED_THREAD_ID"] = str(
-                            smol_meta["thread_id"]
+                    kind = str(smol_meta.get("kind") or "")
+                    if kind == "calendar" and smol_meta.get("event_id"):
+                        sandbox_env_extra["SMOLCLAW_SEED_EVENT_ID"] = str(
+                            smol_meta["event_id"]
                         )
+                    if kind == "gmail" and smol_meta.get("message_id"):
+                        sandbox_env_extra["SMOLCLAW_SEED_MESSAGE_ID"] = str(
+                            smol_meta["message_id"]
+                        )
+                        if smol_meta.get("thread_id"):
+                            sandbox_env_extra["SMOLCLAW_SEED_THREAD_ID"] = str(
+                                smol_meta["thread_id"]
+                            )
 
             # Build env to forward to sandbox (API keys + config env)
             sandbox_env = _sandbox_env(config)

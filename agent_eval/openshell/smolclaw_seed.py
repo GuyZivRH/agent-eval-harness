@@ -332,3 +332,19 @@ def seed_smolclaw_for_case(annotations: dict) -> Optional[dict[str, Any]]:
     if kind == "gmail":
         return _seed_gmail(seed)
     raise ValueError(f"smolclaw_seed.kind must be gmail|calendar, got {kind!r}")
+
+
+def seed_smolclaw_for_scene(seeds: list) -> list[dict[str, Any]]:
+    """Seed a list of gmail/calendar items. Return list of metadata dicts."""
+    results = []
+    for i, seed in enumerate(seeds or []):
+        kind = (seed.get("kind") or "").strip().lower()
+        if kind == "calendar":
+            results.append(_seed_calendar(seed))
+        elif kind == "gmail":
+            results.append(_seed_gmail(seed))
+        else:
+            raise ValueError(
+                f"smolclaw_seeds[{i}].kind must be gmail|calendar, got {kind!r}"
+            )
+    return results
