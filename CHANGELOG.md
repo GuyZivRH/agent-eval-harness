@@ -1,3 +1,10 @@
+## [1.43.2](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.43.1...v1.43.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **config:** skip hidden files and dirs in eval-config discovery ([9e59428](https://github.com/opendatahub-io/agent-eval-harness/commit/9e59428a34da00054c0022f4890632bb2e49faef))
+
 ## [1.43.1](https://github.com/opendatahub-io/agent-eval-harness/compare/v1.43.0...v1.43.1) (2026-08-27)
 
 
