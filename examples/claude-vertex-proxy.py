@@ -41,6 +41,7 @@ MODEL_MAP = {
     "claude-sonnet-4": "claude-sonnet-4-5@20250929",
     "claude-sonnet": "claude-sonnet-4-5@20250929",
     "claude": "claude-sonnet-4-5@20250929",
+    "claude-opus-4-6": "claude-opus-4-6@20250918",
 }
 
 

@@ -10,8 +10,9 @@ build/
 venv/
 
 # Eval runs and state
-eval/runs/
+eval/
 tmp/
+.tmp/
 
 # MLflow
 mlflow.db
@@ -56,3 +57,6 @@ credentials/
 !.specify/memory/
 !.specify/memory/constitution.md
 uv.lock
+
+# Forge agent catalog (cloned by user into resources/)
+resources/forge-agent-catalog/

@@ -198,23 +198,75 @@ def extract_openclaw_response(stdout: bytes) -> str:
     return ""
 
 
+_OPENCLAW_LOG_PREFIXES = (
+    "[provider-transport-fetch]",
+    "[agents/",
+    "[agent/",
+    "[diagnostic]",
+    "[model-fallback/",
+    "[sqlite/",
+    "[tools]",
+    "[openclaw]",
+)
+
+
+def _extract_plain_response(stdout: bytes) -> str:
+    """Extract response text from plain stdout (--message --local mode).
+
+    Strips OpenClaw diagnostic log lines and the trailing agent-command
+    status line, keeping only the agent's actual response.
+    """
+    text = stdout.decode(errors="replace") if isinstance(stdout, bytes) else stdout
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            lines.append("")
+            continue
+        if any(stripped.startswith(p) for p in _OPENCLAW_LOG_PREFIXES):
+            continue
+        lines.append(line)
+    # Trim leading/trailing blank lines
+    result = "\n".join(lines).strip()
+    return result
+
+
 def parse_openclaw_to_case_dict(
     stdout: bytes,
     stderr: bytes,
     returncode: int,
     duration_s: float,
+    *,
+    plain_text: bool = False,
 ) -> dict:
-    """Parse OpenClaw JSON into case_result dict (for openshell backend per_case).
+    """Parse OpenClaw output into case_result dict (for openshell backend per_case).
 
     Args:
         stdout: Raw stdout bytes from openclaw process.
         stderr: Raw stderr bytes from openclaw process.
         returncode: Process exit code.
         duration_s: Execution duration in seconds.
+        plain_text: If True, parse as plain text output from
+            ``openclaw agent --message --local``. If False (default),
+            parse as JSON envelope from ``openclaw agent exec --json``.
 
     Returns:
         Dict with execution metrics for suite run_result.json.
     """
+    stderr_str = stderr.decode(errors="replace") if isinstance(stderr, bytes) else stderr
+
+    if plain_text:
+        response_text = _extract_plain_response(stdout)
+        return {
+            "exit_code": returncode,
+            "duration_s": round(duration_s, 1),
+            "token_usage": {"input": 0, "output": 0},
+            "cost_usd": None,
+            "num_turns": None,
+            "response_text": response_text,
+            "stderr": stderr_str,
+        }
+
     data, error_msg = _parse_openclaw_envelope(stdout, stderr)
     if data is None:
         return {

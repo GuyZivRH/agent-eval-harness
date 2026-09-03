@@ -45,6 +45,10 @@ SCRIPTS_DIR = Path(__file__).parents[2] / "skills" / "eval-run" / "scripts"
 _OPENCLAW_STATE_DIR = Path("/sandbox/.openclaw")
 _OPENCLAW_TMP_DIR = Path("/sandbox/tmp")
 
+# Invoke openclaw via node directly — the /usr/local/bin/openclaw symlink
+# gets SIGKILL'd in sandboxed environments due to shebang resolution issues.
+_OPENCLAW_NODE_BIN = ["node", "/opt/openclaw/node_modules/.bin/openclaw"]
+
 # Environment variables to forward to sandbox (mirrors Harbor's _FORWARD_ENV)
 _FORWARD_ENV = (
     # Provider config
@@ -125,7 +129,7 @@ async def _harvest_openclaw_events(
             export_result = await sandbox.exec(
                 name,
                 [
-                    "openclaw",
+                    *_OPENCLAW_NODE_BIN,
                     "sessions",
                     "export-trajectory",
                     "--session-key",
@@ -144,7 +148,7 @@ async def _harvest_openclaw_events(
                 # Fallback: resolve key via sessions list (match sessionId)
                 list_result = await sandbox.exec(
                     name,
-                    ["openclaw", "sessions", "--json"],
+                    [*_OPENCLAW_NODE_BIN, "sessions", "--json"],
                     workdir="/sandbox",
                     env=sandbox_env,
                     timeout_s=60,
@@ -158,7 +162,7 @@ async def _harvest_openclaw_events(
                     export_result = await sandbox.exec(
                         name,
                         [
-                            "openclaw",
+                            *_OPENCLAW_NODE_BIN,
                             "sessions",
                             "export-trajectory",
                             "--session-key",
@@ -634,6 +638,76 @@ async def _run_case(
             # OpenShell nests directory uploads: local case dir → /sandbox/<case_id>/
             await sandbox.upload(name, staged_case, "/sandbox")
 
+            # Install CLAW package if chief-of-staff/ dir is present.
+            # Check next to eval.yaml, then resources/forge-agent-catalog/ in the repo.
+            claw_package = config.config_path.parent / "chief-of-staff"
+            if not claw_package.is_dir():
+                repo_pkg = Path(__file__).resolve().parents[2] / "resources" / "forge-agent-catalog" / "chief-of-staff"
+                if repo_pkg.is_dir():
+                    claw_package = repo_pkg
+            claw_installed = False
+            if claw_package.is_dir():
+                await sandbox.upload(name, claw_package, "/sandbox")
+                logger.info("Uploaded chief-of-staff package for %s", case_id)
+                claw_env = {
+                    "HOME": "/sandbox",
+                    "OPENCLAW_EXPERIMENTAL_CLAWS": "1",
+                }
+                dry_run = await sandbox.exec(
+                    name,
+                    [
+                        "node", "/opt/openclaw/node_modules/.bin/openclaw",
+                        "claws", "add",
+                        "/sandbox/chief-of-staff",
+                        "--dry-run", "--json",
+                    ],
+                    workdir="/sandbox",
+                    env=claw_env,
+                    timeout_s=60,
+                )
+                logger.info(
+                    "claws add --dry-run rc=%d stdout=%d bytes stderr=%d bytes",
+                    dry_run.return_code, len(dry_run.stdout), len(dry_run.stderr),
+                )
+                if dry_run.return_code != 0:
+                    raise RuntimeError(
+                        f"claws add --dry-run failed for {case_id} (rc={dry_run.return_code}): "
+                        f"{dry_run.stderr or dry_run.stdout or '(no output)'}"
+                    )
+
+                import re as _re
+                integrity_match = _re.search(
+                    r'"planIntegrity"\s*:\s*"(sha256:[a-f0-9]+)"',
+                    dry_run.stdout,
+                )
+                if not integrity_match:
+                    raise RuntimeError(
+                        f"Could not extract planIntegrity from claws add --dry-run "
+                        f"for {case_id}: {dry_run.stdout[:500]}"
+                    )
+
+                plan_integrity = integrity_match.group(1)
+                add_result = await sandbox.exec(
+                    name,
+                    [
+                        "node", "/opt/openclaw/node_modules/.bin/openclaw",
+                        "claws", "add",
+                        "/sandbox/chief-of-staff",
+                        "--yes",
+                        "--plan-integrity", plan_integrity,
+                    ],
+                    workdir="/sandbox",
+                    env=claw_env,
+                    timeout_s=60,
+                )
+                if add_result.return_code != 0:
+                    raise RuntimeError(
+                        f"claws add failed for {case_id} (rc={add_result.return_code}): "
+                        f"{add_result.stderr or add_result.stdout or '(no output)'}"
+                    )
+                claw_installed = True
+                logger.info("Installed CLAW package for %s", case_id)
+
             input_yaml_path = staged_case / "input.yaml"
             if input_yaml_path.exists():
                 input_yaml = yaml.safe_load(input_yaml_path.read_text()) or {}
@@ -643,8 +717,9 @@ async def _run_case(
             # Resolve prompt template (Jinja2 or str.format)
             prompt = _resolve_prompt(config, input_yaml)
             system_prompt = getattr(config.runner, "system_prompt", None)
-            if system_prompt and str(system_prompt).strip():
+            if system_prompt and str(system_prompt).strip() and not claw_installed:
                 # OpenClaw agent exec has no --append-system-prompt; prepend.
+                # Skip when CLAW is installed — agent --local loads identity automatically.
                 prompt = f"{str(system_prompt).strip()}\n\n{prompt}"
 
             # Skip per-case seeding when a scene was seeded at run start
@@ -826,21 +901,70 @@ async def _run_case(
                 if not effort and config.runner.settings:
                     effort = config.runner.settings.get("effort")
 
-                # Pass --state-dir so agent exec keeps SQLite (default temp state
-                # is deleted on exit). Same path as OPENCLAW_STATE_DIR under
-                # /sandbox (Landlock read_write). Needed for trajectory export.
-                cmd = build_openclaw_argv(
-                    model=model,
-                    timeout_s=config.execution.timeout,
-                    effort=effort,
-                    cwd=Path("/sandbox"),
-                    auth_env_only=auth_env_only,
-                    config_path=config_path,
-                    state_dir=_OPENCLAW_STATE_DIR,
-                )
-                # Prompt is positional argument in 'agent exec' format
-                cmd.append(prompt)
-                stdin_data = None
+                # When CLAW package is installed, merge providers into
+                # the config that claws add wrote (openclaw.json), not a
+                # separate file — OPENCLAW_CONFIG_PATH overrides the agent
+                # registry, losing the claws-installed agent entries.
+                if claw_installed:
+                    claws_config_path = f"{_OPENCLAW_STATE_DIR}/openclaw.json"
+                    models_tmp = f"{_OPENCLAW_STATE_DIR}/_providers.json"
+                    models_json = json.dumps(
+                        {"models": openclaw_config.get("models", {})}
+                    )
+                    # Write providers to a temp file via tee (stdin works
+                    # with tee but not with /bin/sh -c pipes).
+                    await sandbox.exec(
+                        name, ["tee", models_tmp], stdin=models_json.encode(),
+                    )
+                    merge_cmd = (
+                        f'node -e \'const fs=require("fs");'
+                        f'const cfg=JSON.parse(fs.readFileSync("{claws_config_path}","utf8"));'
+                        f'const ext=JSON.parse(fs.readFileSync("{models_tmp}","utf8"));'
+                        f'cfg.agents=cfg.agents||{{}};'
+                        f'cfg.agents.defaults=cfg.agents.defaults||{{}};'
+                        f'cfg.agents.defaults.model={{primary:"{model}"}};'
+                        f'cfg.models=Object.assign(cfg.models||{{}},ext.models);'
+                        f'fs.writeFileSync("{claws_config_path}",JSON.stringify(cfg,null,2));\''
+                    )
+                    await sandbox.exec(
+                        name,
+                        ["/bin/sh", "-c", merge_cmd],
+                        workdir="/sandbox",
+                        env=sandbox_env,
+                        timeout_s=10,
+                    )
+                    sandbox_env.pop("OPENCLAW_CONFIG_PATH", None)
+                    logger.info("Merged provider config into claws-generated openclaw.json")
+
+                if claw_installed:
+                    # Use 'openclaw agent --agent <id> --message --local'
+                    # for CLAW-installed agents. This loads the registered
+                    # agent identity, workspace, and context automatically.
+                    cmd = [
+                        *_OPENCLAW_NODE_BIN, "agent",
+                        "--agent", "chief-of-staff",
+                        "--message", prompt,
+                        "--local",
+                        "--model", model,
+                        "--timeout", str(config.execution.timeout or 600),
+                    ]
+                    stdin_data = None
+                else:
+                    # Default: agent exec for non-CLAW evals
+                    # Pass --state-dir so agent exec keeps SQLite (default
+                    # temp state is deleted on exit).
+                    cmd = build_openclaw_argv(
+                        model=model,
+                        timeout_s=config.execution.timeout,
+                        effort=effort,
+                        cwd=Path("/sandbox"),
+                        auth_env_only=auth_env_only,
+                        config_path=config_path,
+                        state_dir=_OPENCLAW_STATE_DIR,
+                    )
+                    # Prompt is positional argument in 'agent exec' format
+                    cmd.append(prompt)
+                    stdin_data = None
 
             logger.info(f"Executing case {case_id} in sandbox {name}")
             timeout = (config.execution.timeout or 600) + 60
@@ -880,6 +1004,7 @@ async def _run_case(
                     result.stderr.encode(),
                     result.return_code,
                     duration_s,
+                    plain_text=claw_installed,
                 )
                 # Extract response text and write to output/ directory (following existing convention)
                 response_text = case_result.get("response_text", "")

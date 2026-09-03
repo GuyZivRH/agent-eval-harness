@@ -40,8 +40,8 @@ evaluation rubrics document:
 
 | Rubric | Dimensions | Scored on |
 |--------|-----------|-----------|
-| Task Prioritization | Recall, Precision, Relevance | morning-briefing case |
-| Data Connection | Precision, Recall | morning-briefing case |
+| Task Prioritization | Recall, Precision, Relevance | daily-briefing case |
+| Data Connection | Precision, Recall | daily-briefing case |
 | Analysis Panel | Accuracy, Independent Judgment, Citations | analysis-panel case |
 
 ---
@@ -96,7 +96,7 @@ eval/openclaw-forge-agent/
 ```
 
 The bootstrap ships with `monday-acquisition` as the default scene and two
-cases (`morning-briefing`, `analysis-panel`). Add new scenes and cases by
+cases (`daily-briefing`, `analysis-panel`). Add new scenes and cases by
 editing the bootstrap script.
 
 ---
@@ -193,7 +193,7 @@ LLM rubric judges (1-5) plus two deterministic judges that run on every case:
 
 | Case | Prompt | LLM judges |
 |------|--------|------------|
-| **morning-briefing** | Read all Slack/Gmail/Calendar, produce Top of Mind / FYI / Looking Ahead briefing | prioritization (recall, precision, relevance) + connection (precision, recall) |
+| **daily-briefing** | Read all Slack/Gmail/Calendar, produce Top of Mind / FYI / Looking Ahead briefing | prioritization (recall, precision, relevance) + connection (precision, recall) |
 | **analysis-panel** | Produce analysis panel for a specific card | accuracy, independent judgment, citations |
 
 ### Default scene: monday-acquisition
@@ -283,11 +283,11 @@ cat "$RUN/summary.yaml"
 
 | Judge | Type | Score | Applied to |
 |-------|------|-------|------------|
-| prioritization_recall | LLM | 1-5 | morning-briefing |
-| prioritization_precision | LLM | 1-5 | morning-briefing |
-| prioritization_relevance | LLM | 1-5 | morning-briefing |
-| connection_precision | LLM | 1-5 | morning-briefing |
-| connection_recall | LLM | 1-5 | morning-briefing |
+| prioritization_recall | LLM | 1-5 | daily-briefing |
+| prioritization_precision | LLM | 1-5 | daily-briefing |
+| prioritization_relevance | LLM | 1-5 | daily-briefing |
+| connection_precision | LLM | 1-5 | daily-briefing |
+| connection_recall | LLM | 1-5 | daily-briefing |
 | analysis_accuracy | LLM | 1-5 | analysis-panel |
 | analysis_independent_judgment | LLM | 1-5 | analysis-panel |
 | analysis_citations | LLM | 1-5 | analysis-panel |
