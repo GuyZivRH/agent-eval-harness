@@ -10,7 +10,7 @@ EVAL_DIR="${ROOT}/eval/openclaw-forge-agent"
 
 mkdir -p \
   "${EVAL_DIR}/scenes" \
-  "${EVAL_DIR}/cases/morning-briefing" \
+  "${EVAL_DIR}/cases/daily-briefing" \
   "${EVAL_DIR}/cases/analysis-panel"
 
 # --- eval.yaml ---
@@ -65,7 +65,7 @@ outputs:
       response.txt: agent final response (morning briefing or analysis panel)
 
 judges:
-  # --- Prioritization judges (morning-briefing case) ---
+  # --- Prioritization judges (daily-briefing case) ---
   - name: prioritization_recall
     if: "annotations.get('expected_top_of_mind')"
     prompt: |
@@ -163,7 +163,7 @@ judges:
     score_range: [1, 5]
     feedback_type: int
 
-  # --- Data connection judges (morning-briefing case) ---
+  # --- Data connection judges (daily-briefing case) ---
   - name: connection_precision
     if: "annotations.get('expected_separate')"
     prompt: |
@@ -482,8 +482,8 @@ smolclaw_seeds:
     description: "Final round interview with the top candidate for EVP of Global Logistics. Forge cross-referenced resume against internal leadership competency model. Decision needed within 48 hours of interview."
 EOF
 
-# --- Case: morning-briefing ---
-cat > "${EVAL_DIR}/cases/morning-briefing/input.yaml" <<'EOF'
+# --- Case: daily-briefing ---
+cat > "${EVAL_DIR}/cases/daily-briefing/input.yaml" <<'EOF'
 prompt: |
   CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
   Do NOT paste bash in markdown instead of calling exec.
@@ -528,7 +528,7 @@ prompt: |
   - Do not call chat.postMessage — this is a read-only task.
 EOF
 
-cat > "${EVAL_DIR}/cases/morning-briefing/annotations.yaml" <<'EOF'
+cat > "${EVAL_DIR}/cases/daily-briefing/annotations.yaml" <<'EOF'
 expected_top_of_mind:
   - "European cloud acquisition — DOJ deadline at noon"
   - "Acme Corp escalation — $5M contract at risk"
@@ -631,7 +631,7 @@ chmod +x "$0"
 echo "Forge eval rubrics bootstrapped:"
 echo "  eval.yaml:    ${EVAL_DIR}/eval.yaml"
 echo "  scene:        ${EVAL_DIR}/scenes/monday-acquisition.yaml"
-echo "  cases:        morning-briefing, analysis-panel"
+echo "  cases:        daily-briefing, analysis-panel"
 echo "  judges:       8 LLM rubric (1-5 scale) + 2 deterministic"
 echo ""
 echo "Run with:"

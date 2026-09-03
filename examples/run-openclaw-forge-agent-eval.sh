@@ -9,7 +9,7 @@
 #
 # Usage:
 #   ./examples/run-openclaw-forge-agent-eval.sh
-#   ./examples/run-openclaw-forge-agent-eval.sh --cases morning-briefing
+#   ./examples/run-openclaw-forge-agent-eval.sh --cases daily-briefing
 #   ./examples/run-openclaw-forge-agent-eval.sh --keep-sandbox
 set -euo pipefail
 
