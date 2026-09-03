@@ -210,6 +210,7 @@ def load_case_record(case_dir, config, run_id=None, runs_dir=None):
     # --- Annotations (from dataset case directory) ---
     record["annotations"] = {}
     case_id = case_dir.name
+    ann_root = None  # directory that owned annotations.yaml (for file refs)
     if config.dataset.path:
         dataset_root = config.resolve_path(config.dataset.path).resolve()
         annotations_path = (dataset_root / case_id / "annotations.yaml").resolve()
@@ -219,29 +220,44 @@ def load_case_record(case_dir, config, run_id=None, runs_dir=None):
             try:
                 with open(annotations_path) as f:
                     record["annotations"] = yaml.safe_load(f) or {}
+                ann_root = dataset_root / case_id
             except (yaml.YAMLError, OSError):
                 pass
-            # Load annotation-referenced files into the record.
-            # Only treat values as file paths if they look like filenames:
-            # - Short enough to be a valid filename (< 256 chars)
-            # - No newlines (multi-line strings are descriptions, not paths)
-            # - No spaces at start/end (paths are usually trimmed)
-            for key, val in record["annotations"].items():
-                if isinstance(val, str) and not val.startswith("/"):
-                    # Skip values that don't look like filenames
-                    if len(val) > 255 or "\n" in val or val != val.strip():
-                        continue
+    # Harbor trials (and similar) ship annotations.yaml into the workspace
+    # because dataset.path is not available inside the container.
+    if not record["annotations"]:
+        local_ann = case_dir / "annotations.yaml"
+        if local_ann.is_file() and not local_ann.is_symlink():
+            try:
+                with open(local_ann) as f:
+                    record["annotations"] = yaml.safe_load(f) or {}
+                ann_root = case_dir
+            except (yaml.YAMLError, OSError):
+                pass
+    # Load annotation-referenced files into the record.
+    # Only treat values as file paths if they look like filenames:
+    # - Short enough to be a valid filename (< 256 chars)
+    # - No newlines (multi-line strings are descriptions, not paths)
+    # - No spaces at start/end (paths are usually trimmed)
+    if record["annotations"] and ann_root is not None:
+        root = ann_root.resolve()
+        for key, val in record["annotations"].items():
+            if isinstance(val, str) and not val.startswith("/"):
+                # Skip values that don't look like filenames
+                if len(val) > 255 or "\n" in val or val != val.strip():
+                    continue
+                try:
+                    ref_path = (root / val).resolve()
+                except OSError:
+                    # Path resolution can fail for invalid characters
+                    continue
+                if (ref_path.is_file() and not ref_path.is_symlink()
+                        and ref_path.is_relative_to(root)):
                     try:
-                        ref_path = (dataset_root / case_id / val).resolve()
-                    except OSError:
-                        # Path resolution can fail for invalid characters
-                        continue
-                    if (ref_path.is_file() and not ref_path.is_symlink()
-                            and ref_path.is_relative_to(dataset_root)):
-                        try:
-                            record[f"annotation_{key}_content"] = ref_path.read_text()
-                        except (UnicodeDecodeError, OSError):
-                            pass
+                        record[f"annotation_{key}_content"] = ref_path.read_text()
+                    except (UnicodeDecodeError, OSError):
+                        pass
+
 
     # --- File artifacts (from path outputs) ---
     for output in config.outputs:

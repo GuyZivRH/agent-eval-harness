@@ -161,12 +161,47 @@ def _extract_transcript_metrics(transcript_path: Path) -> dict:
 
 
 def _agent_transcript_metrics(agent_dir: Path) -> dict:
-    """Read the transcript emitted by the active stock Harbor agent."""
-    for name in ("claude-code.txt", "codex.txt"):
+    """Read the transcript emitted by the active Harbor agent.
+
+    Stock Harbor agents write ``claude-code.txt`` / ``codex.txt``. The AEH
+    OpenClaw agent writes ``openclaw.txt`` (stdout/stderr) plus optional
+    ``openclaw-trajectory.jsonl`` for tool-use judges.
+    """
+    for name in ("claude-code.txt", "codex.txt", "openclaw.txt"):
         path = agent_dir / name
         if path.is_file():
             return _extract_transcript_metrics(path)
     return _empty_transcript_metrics()
+
+
+def load_openclaw_trajectory_events(agent_dir: Path) -> list:
+    """Parse OpenClaw trajectory JSONL from a Harbor trial agent log dir.
+
+    Prefers the AEH OpenClaw trajectory parser when it yields events; otherwise
+    falls back to raw JSONL objects so Forge tool-use judges still see activity.
+    """
+    traj = agent_dir / "openclaw-trajectory.jsonl"
+    if not traj.is_file():
+        return []
+    text = traj.read_text(encoding="utf-8")
+    try:
+        from agent_eval.events import parse_openclaw_trajectory_events
+
+        parsed = parse_openclaw_trajectory_events(text)
+        if parsed:
+            return parsed
+    except Exception:
+        pass
+    events = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except Exception:
+            continue
+    return events
 
 
 def _number(mapping: dict, key: str):
@@ -347,6 +382,11 @@ def parse_trial(trial_dir: Path) -> dict | None:
                             else fallback_duration)
     record["agent_version"] = extracted.get("agent_version") or fallback_version
     record["per_model_usage"] = extracted.get("per_model_usage")
+
+    # OpenClaw trajectory (tool-use judges / Forge rubrics such as used_m365_tools).
+    openclaw_events = load_openclaw_trajectory_events(trial_dir / "agent")
+    if openclaw_events:
+        record["events"] = openclaw_events
 
     # Richer sidecar (values + rationales) when present.
     judges_path = trial_dir / "verifier" / "judges.json"

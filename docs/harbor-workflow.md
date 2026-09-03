@@ -233,3 +233,29 @@ Agent logs stream to pod stdout (visible via `oc logs -f <pod>`).
 Harbor also captures transcripts in the job directory:
 `agent/claude-code.txt` (stream-json), `agent/trajectory.json` (ATIF),
 `verifier/reward.json`, `verifier/judges.json`.
+
+
+## OpenClaw / Forge on Harbor (Podman)
+
+The Forge eval pack (`eval/openclaw-forge-agent`) can run on Harbor without the
+OpenShell gateway. AEH maps `runner.type: openclaw` to the custom agent
+`agent_eval.harbor.agents.openclaw:OpenClawAgent`, which:
+
+1. Writes an OpenClaw provider config from `OPENCLAW_INFERENCE_BASE_URL`
+   (host proxy via `host.containers.internal`)
+2. Installs M365 Graph file-auth (`M365_AUTH_HEADER_FILE`) and scrubs
+   `M365_ACCESS_TOKEN` / `M365_CLIENT_SECRET` (OpenClaw 8.1 exec redaction)
+3. Runs `openclaw agent exec --json` with a retained `--state-dir`
+4. Exports trajectory JSONL under `/logs/agent/` for tool-use judges
+
+```bash
+podman build --platform linux/amd64 \
+  -f deploy/harbor/Containerfile.openclaw \
+  -t localhost/agent-eval-openclaw:latest .
+
+./examples/run-openclaw-forge-agent-harbor-eval.sh
+```
+
+OpenShell remains the high-fidelity local path (Landlock policy +
+`inference.local`). Harbor is the gateway-free substrate for Podman now and
+cluster CI later. See `docs/openshell-openclaw-forge-agent.md`.

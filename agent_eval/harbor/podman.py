@@ -45,6 +45,13 @@ _FORWARD_ENV = (
     "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
     "AWS_BEARER_TOKEN_BEDROCK",
     "OPENAI_API_KEY",
+    # OpenClaw / Forge: host proxy + Microsoft Graph + Slack
+    "OPENCLAW_INFERENCE_BASE_URL", "OPENCLAW_INFERENCE_API_KEY",
+    "OPENCLAW_INFERENCE_MODEL", "OPENCLAW_TIMEOUT", "OPENCLAW_EFFORT",
+    "OPENCLAW_WORKSPACE",
+    "M365_ACCESS_TOKEN", "M365_USER",
+    "M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET",
+    "SLACK_BOT_TOKEN", "SLACK_API_URL",
 )
 
 _HARBOR_LOG_TARGETS = {"/logs/verifier", "/logs/agent", "/logs/artifacts"}
@@ -337,13 +344,19 @@ class PodmanEnvironment(BaseEnvironment):
     async def upload_file(self, source_path: Path | str, target_path: str) -> None:
         parent = str(Path(target_path).parent)
         if parent and parent != ".":
-            await self.exec(f"mkdir -p {shlex.quote(parent)}", user="root")
+            # Use cwd="/" so mkdir can create the task workdir itself — `podman
+            # exec -w <workdir>` requires the directory to already exist.
+            await self.exec(
+                f"mkdir -p {shlex.quote(parent)}", user="root", cwd="/"
+            )
         await self._cp(str(source_path), f"{self._container}:{target_path}")
 
     async def upload_dir(self, source_dir: Path | str, target_dir: str) -> None:
         # `podman cp <dir>/. <c>:<target>` copies contents into target.
         src = str(source_dir).rstrip("/")
-        await self.exec(f"mkdir -p {shlex.quote(target_dir)}", user="root")
+        await self.exec(
+            f"mkdir -p {shlex.quote(target_dir)}", user="root", cwd="/"
+        )
         await self._cp(f"{src}/.", f"{self._container}:{target_dir}")
 
     async def download_file(self, source_path: str, target_path: Path | str) -> None:

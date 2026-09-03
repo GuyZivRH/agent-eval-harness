@@ -123,6 +123,32 @@ def test_the_regressions_section_says_so_when_it_cannot_evaluate(monkeypatch):
     assert "engine unavailable" in html
 
 
+def test_detect_regressions_works_when_report_is_loaded_like_harbor():
+    """Harbor importlib-loads report.py as ``agent_eval_report`` without
+    putting ``skills/eval-run/scripts`` on ``sys.path`` — the old
+    ``from score import ...`` then failed and the HTML claimed it could not
+    evaluate thresholds even on a clean run."""
+    scripts = REPO_ROOT / "skills" / "eval-run" / "scripts"
+    # Simulate Harbor: no scripts dir on path, distinct module name.
+    sys.path[:] = [p for p in sys.path if Path(p).resolve() != scripts.resolve()]
+    sys.modules.pop("score", None)
+    sys.modules.pop("report", None)
+    sys.modules.pop("agent_eval_report", None)
+
+    mod = _load(scripts / "report.py", "agent_eval_report")
+    regs = mod._detect_regressions(
+        {"q": {"mean": 0.5, "scored_cases": 10}},
+        {"q": {"min_mean": 1.0}},
+    )
+    assert regs
+    html = mod._render_regressions(
+        {"judges": {"q": {"mean": 0.5, "scored_cases": 10}}},
+        {"thresholds": {"q": {"min_mean": 1.0}}},
+    )
+    assert "Could not evaluate thresholds" not in html
+    assert "Regressions" in html
+
+
 def test_the_summary_does_not_claim_pass_when_it_cannot_evaluate(monkeypatch):
     """An empty breach set has to mean "checked, none" — not "never checked"."""
     _break_detector(monkeypatch, report)

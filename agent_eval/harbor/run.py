@@ -68,10 +68,14 @@ def _load_dotenv() -> None:
 _RUNNER_TO_HARBOR_AGENT = {
     "claude-code": "claude-code",
     "codex": "codex",
+    # Custom AEH agent (OpenClaw agent exec + Forge M365 file-auth). Harbor
+    # resolves import-path agents via ``-a module.path:Class``.
+    "openclaw": "agent_eval.harbor.agents.openclaw:OpenClawAgent",
     "cli": None,            # CLI runner is generic — user must pass --agent explicitly
     "responses-api": None,  # no Harbor equivalent
 }
 _DEFAULT_AGENT = "claude-code"
+_OPENCLAW_AGENT_IMPORT = "agent_eval.harbor.agents.openclaw:OpenClawAgent"
 _ENV_IMPORT_PATHS = {
     "podman": "agent_eval.harbor.podman:PodmanEnvironment",
     "kubernetes": "agent_eval.harbor.kubernetes:KubernetesEnvironment",
@@ -573,11 +577,20 @@ def run_eval_on_harbor(
         sibling = Path(sys.executable).parent / "harbor"
         if sibling.is_file():
             harbor_bin = str(sibling)
+        else:
+            found = shutil.which("harbor")
+            if found:
+                harbor_bin = found
     cmd = [
         harbor_bin, "run", "-p", str(tasks_dir),
-        "-a", agent_name, "-m", model,
+        "-m", model,
         "-n", str(n_concurrent), "-o", str(jobs_dir),
     ]
+    # Harbor 0.22+: ``-a`` accepts either a stock agent name or a custom
+    # ``module.path:ClassName`` import path (``--agent-import-path`` is
+    # deprecated/hidden). Stock Harbor also ships an ``openclaw`` agent — we
+    # always pass our AEH import path for runner.type=openclaw.
+    cmd += ["-a", agent_name]
     # --skill is agent-agnostic: skills_dir is a BaseAgent constructor argument
     # (harbor/agents/base.py), and both stock agents copy it into the location
     # their CLI reads. Gating this on one agent would silently run a
@@ -599,11 +612,15 @@ def run_eval_on_harbor(
     if memory_mb is not None:
         cmd += ["--override-memory-mb", str(memory_mb)]
     if env_import_path:
-        cmd += ["--environment-import-path", env_import_path]
+        # Harbor 0.22+: ``-e`` accepts stock env names or import paths
+        # (``--environment-import-path`` is deprecated/hidden).
+        cmd += ["-e", env_import_path]
     print(f"harbor: {_display_command(cmd)}", file=sys.stderr)
     import signal
     child_env = os.environ.copy()
     child_env.update(harbor_env)
+    venv_bin = str(Path(sys.executable).parent)
+    child_env["PATH"] = venv_bin + os.pathsep + child_env.get("PATH", "")
     proc = subprocess.Popen(cmd, env=child_env)
     def _forward_signal(signum, frame):
         try:

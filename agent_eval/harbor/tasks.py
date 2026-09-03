@@ -22,6 +22,7 @@ Per case it emits::
       environment/             # auto-uploaded to the agent workspace by Harbor
         input.yaml             # case input
         answers.yaml           # (if present)
+        annotations.yaml       # (if present)
         <dest>                 # shared dataset.workspace.files {dest, source}
                                #   entries, resolved from the local checkout
         hooks/tools.py         # tool interceptor script (if inputs.tools configured)
@@ -392,6 +393,9 @@ def _write_multi_step_case_package(config, config_path, bundled_cfg, case_dir,
     answers = case_dir / "answers.yaml"
     if answers.is_file():
         shutil.copy2(answers, env_dir / "answers.yaml")
+    annotations = case_dir / "annotations.yaml"
+    if annotations.is_file():
+        shutil.copy2(annotations, env_dir / "annotations.yaml")
     # Shared {dest, source} workspace.files, resolved from the local checkout
     # and copied in so the file travels inside the task package.
     materialize_shared_files(env_dir, config)
@@ -529,6 +533,9 @@ def generate_tasks(
         answers = case_dir / "answers.yaml"
         if answers.is_file():
             shutil.copy2(answers, env_dir / "answers.yaml")
+        annotations = case_dir / "annotations.yaml"
+        if annotations.is_file():
+            shutil.copy2(annotations, env_dir / "annotations.yaml")
         # Shared {dest, source} workspace.files, resolved from the local
         # checkout and copied in so the file travels inside the task package.
         materialize_shared_files(env_dir, config)

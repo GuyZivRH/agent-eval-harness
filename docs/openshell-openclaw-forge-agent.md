@@ -244,11 +244,16 @@ RUN_ID="forge-agent-$(date +%Y%m%d-%H%M%S)"
   2>&1 | tee "$PWD/.tmp/aeh-${RUN_ID}.log"
 ```
 
-Or use the wrapper script:
+Or use the wrapper script (defaults to Quay `:latest`; pin a tag when needed):
 
 ```bash
 ./examples/run-openclaw-forge-agent-eval.sh
+# OPENCLAW_IMAGE_TAG=2026.8.1-beta.3 ./examples/run-openclaw-forge-agent-eval.sh
+# OPENCLAW_IMAGE=quay.io/aipcc/base-images/agentic/openclaw:2026.8.1-beta.3 ./…
+# (OPENCLAW_* overrides a silent AGENT_EVAL_OPENSHELL_IMAGE pin from .tmp/forge-real/env)
 ```
+
+Harbor stays on its own image (`localhost/agent-eval-openclaw`); see below.
 
 ### Before re-running
 
@@ -350,3 +355,16 @@ kill $(lsof -tiTCP:8002 -sTCP:LISTEN) 2>/dev/null
 | `agent_eval/openshell/crabline_seed.py` | `seed_crabline_for_scene()` |
 | `agent_eval/openshell/smolclaw_seed.py` | `seed_smolclaw_for_scene()` |
 | `Evaluation rubrics ideation.md` | Source rubric criteria (1-5 scales) |
+
+
+## Harbor substrate (same cases)
+
+To run the same `morning-briefing` / `analysis-panel` cases on Harbor/Podman
+(no OpenShell gateway), use:
+
+```bash
+./examples/run-openclaw-forge-agent-harbor-eval.sh
+```
+
+See `docs/harbor-workflow.md` (OpenClaw / Forge on Harbor) and
+`deploy/harbor/Containerfile.openclaw`.

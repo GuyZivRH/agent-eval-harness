@@ -1483,13 +1483,30 @@ def _render_scoring_summary(summary, config, baseline_summary=None):
 def _detect_regressions(judges, thresholds):
     """score.py's regression detector.
 
-    score.py sits beside this file but is a script, not a package module, so
-    it is imported by name off the same directory. Raises rather than
-    returning [] — a detector that could not run is not a clean run, and
-    callers render that distinction.
+    ``score.py`` is a skill script, not an installable package. Native
+    ``/eval-run`` often has this scripts dir on ``sys.path`` (so
+    ``from score import ...`` works), but Harbor loads ``report.py`` via
+    ``importlib`` under another module name and does not. Load by path —
+    same approach as ``skills/eval-mlflow/scripts/log_results.py`` and
+    ``agent_eval/harbor/reward.py`` — so both substrates share one detector.
+    Raises rather than returning []: a detector that could not run is not a
+    clean run, and callers render that distinction.
     """
-    from score import detect_regressions
-    return detect_regressions(judges, thresholds)
+    import importlib.util
+
+    score_path = Path(__file__).resolve().parent / "score.py"
+    if not score_path.is_file():
+        raise FileNotFoundError(f"Judge engine not found: {score_path}")
+    # Prefer an already-imported sibling ``score`` (native CLI / unit tests)
+    # so we do not re-exec the large module on every call.
+    existing = sys.modules.get("score")
+    if existing is not None and hasattr(existing, "detect_regressions"):
+        return existing.detect_regressions(judges, thresholds)
+    spec = importlib.util.spec_from_file_location(
+        "_score_for_thresholds", score_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.detect_regressions(judges, thresholds)
 
 
 def _render_regressions(summary, config):

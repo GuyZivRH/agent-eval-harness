@@ -33,13 +33,17 @@ Harbor, not a host-local OpenClaw process.
 | **OpenClaw (Quay)** | Agent binary inside the sandbox (`OpenClaw 2026.7.2-beta.7`); talks to `https://inference.local/v1` |
 | **Host proxy** | OpenAI-compatible HTTP API on `:8000` backed by Vertex Claude |
 
-Validated image:
+Validated image family:
 
 ```text
-quay.io/aipcc/base-images/agentic/openclaw:latest
-→ OpenClaw 2026.7.2-beta.7 (dabe191)
-→ OpenClaw packaged under /opt/openclaw
+quay.io/aipcc/base-images/agentic/openclaw:latest   # default (follow Quay)
+# or pin:  …/openclaw:2026.8.1-beta.3
+→ OpenClaw under /opt/openclaw
 ```
+
+Forge wrapper knobs: `OPENCLAW_IMAGE_TAG` / `OPENCLAW_IMAGE` /
+`AGENT_EVAL_OPENSHELL_IMAGE` (see `examples/run-openclaw-forge-agent-eval.sh`).
+If the resolved ref already exists locally, Podman/OpenShell reuse it.
 
 Landlock policy used by AEH: `deploy/openshell/eval-policy.yaml`
 (includes `/opt/openclaw` so the Quay layout is readable).

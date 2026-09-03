@@ -1,0 +1,65 @@
+# Harbor trial image: OpenClaw agent + AEH reward/judge bridge.
+#
+# Uses UBI Python (has pip + node) and installs OpenClaw from npm — Quay's
+# hummingbird OpenClaw image has no package manager for layering AEH deps.
+#
+# Build (amd64 recommended for Podman Desktop on Apple Silicon):
+#   podman build --platform linux/amd64 \
+#     -f deploy/harbor/Containerfile.openclaw \
+#     -t localhost/agent-eval-openclaw:latest .
+
+ARG OPENCLAW_NPM_VERSION=2026.8.1-beta.3
+ARG PYTHON_BASE=registry.access.redhat.com/ubi9/python-312:latest
+
+FROM ${PYTHON_BASE}
+
+USER 0
+ARG OPENCLAW_NPM_VERSION
+
+WORKDIR /opt/agent-eval-harness
+
+# OpenClaw CLI (global) — same major as OpenShell Quay pin when possible.
+# npm already links /usr/local/bin/openclaw; do not re-ln (self-loop risk).
+RUN npm install -g "openclaw@${OPENCLAW_NPM_VERSION}" \
+    && openclaw --version \
+    && test -x /usr/local/bin/openclaw
+
+COPY pyproject.toml README.md ./
+COPY agent_eval/ ./agent_eval/
+COPY skills/ ./skills/
+COPY scripts/ ./scripts/
+
+RUN python3 -m pip install --no-cache-dir \
+      -e . \
+      "harbor>=0.1.44" \
+      pyyaml \
+      jinja2 \
+      "anthropic[vertex]" \
+      google-auth \
+      openai \
+      httpx \
+      pydantic \
+    && mkdir -p \
+      /workspace \
+      /logs/agent \
+      /logs/verifier \
+      /home/eval \
+      /tmp/openclaw \
+      /opt/openclaw-home \
+    && chmod -R a+rwX \
+      /workspace \
+      /logs \
+      /home/eval \
+      /tmp/openclaw \
+      /opt/openclaw-home \
+      /opt/agent-eval-harness
+
+ENV HOME=/home/eval \
+    PYTHONUNBUFFERED=1 \
+    OPENCLAW_HOME=/opt/openclaw-home \
+    OPENCLAW_STATE_DIR=/tmp/openclaw \
+    OPENCLAW_CONFIG_PATH=/workspace/openclaw-eval.json \
+    PATH="/usr/local/bin:${PATH}"
+
+WORKDIR /workspace
+USER 1001

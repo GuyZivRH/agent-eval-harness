@@ -24,6 +24,16 @@ from typing import Dict, List, Optional
 import yaml
 
 from agent_eval.agent.openclaw import build_openclaw_argv, parse_openclaw_to_case_dict
+from agent_eval.openclaw.config import (
+    build_openclaw_provider_config,
+    dump_openclaw_provider_config,
+    stamp_config_env,
+)
+from agent_eval.openclaw.m365_auth import (
+    apply_m365_file_auth_env,
+    graph_curl_script,
+    m365_header_body,
+)
 from agent_eval.config import EvalConfig
 from agent_eval.events import (
     build_explicit_openclaw_session_key,
@@ -278,20 +288,12 @@ def _apply_m365_file_auth_env(
 ) -> Optional[str]:
     """Point sandbox env at file-based Graph auth; drop secret-named token env.
 
-    Returns the bearer token when file auth should be installed, else None.
-    OpenClaw 8.1 substitutes ``***`` for secret env values inside exec/curl, so
-    agents must use ``curl -H @$M365_AUTH_HEADER_FILE`` (or ``$M365_GRAPH_CURL``)
-    instead of ``Authorization: Bearer $M365_ACCESS_TOKEN``.
+    Thin wrapper around :func:`agent_eval.openclaw.m365_auth.apply_m365_file_auth_env`
+    so OpenShell keeps its sandbox path defaults.
     """
-    token = sandbox_env.get("M365_ACCESS_TOKEN")
-    if not token:
-        return None
-    sandbox_env["M365_AUTH_HEADER_FILE"] = header_path
-    sandbox_env["M365_GRAPH_CURL"] = curl_path
-    # Keep token out of agent-visible secret-named env (8.1 exec redaction).
-    sandbox_env.pop("M365_ACCESS_TOKEN", None)
-    sandbox_env.pop("M365_CLIENT_SECRET", None)
-    return token
+    return apply_m365_file_auth_env(
+        sandbox_env, header_path=header_path, curl_path=curl_path
+    )
 
 
 async def _install_m365_graph_auth(
@@ -307,18 +309,14 @@ async def _install_m365_graph_auth(
     header_path = Path(sandbox_env["M365_AUTH_HEADER_FILE"])
     curl_path = Path(sandbox_env["M365_GRAPH_CURL"])
     await sandbox.exec(name, ["mkdir", "-p", str(header_path.parent)])
-    header_body = f"Authorization: Bearer {token}\n"
+    header_body = m365_header_body(token)
     await sandbox.exec(
         name,
         ["tee", str(header_path)],
         stdin=header_body.encode(),
     )
     await sandbox.exec(name, ["chmod", "600", str(header_path)])
-    helper = (
-        "#!/bin/sh\n"
-        "# AEH helper: Graph auth via header file (OpenClaw 8.1-safe)\n"
-        f'exec curl -sS -H @"{header_path}" "$@"\n'
-    )
+    helper = graph_curl_script(str(header_path))
     await sandbox.exec(
         name,
         ["tee", str(curl_path)],
@@ -844,55 +842,18 @@ async def _run_case(
                 sandbox_env["OPENCLAW_STATE_DIR"] = str(_OPENCLAW_STATE_DIR)
                 sandbox_env["TMPDIR"] = str(_OPENCLAW_TMP_DIR)
                 if providers:
-                    openclaw_config: dict = {
-                        "agents": {
-                            "defaults": {
-                                "model": {"primary": model},
-                            }
-                        },
-                        "models": {
-                            "mode": "merge",
-                            "providers": {},
-                        },
-                    }
-                    for provider_name, provider_cfg in providers.items():
-                        provider_entry: dict = {
-                            "baseUrl": provider_cfg.get("baseUrl", ""),
-                            "apiKey": provider_cfg.get("apiKey", "empty"),
-                            "api": provider_cfg.get("api", "openai-completions"),
-                            "models": [],
-                        }
-                        for m in provider_cfg.get("models", []):
-                            model_entry = {
-                                "id": m.get("id", ""),
-                                "name": m.get("name", m.get("id", "")),
-                                "reasoning": False,
-                                "input": ["text"],
-                                "cost": {
-                                    "input": 0,
-                                    "output": 0,
-                                    "cacheRead": 0,
-                                    "cacheWrite": 0,
-                                },
-                                "contextWindow": 200000,
-                                "maxTokens": 8192,
-                            }
-                            if m.get("api"):
-                                model_entry["api"] = m["api"]
-                            provider_entry["models"].append(model_entry)
-                        openclaw_config["models"]["providers"][provider_name] = (
-                            provider_entry
-                        )
-
+                    openclaw_config = build_openclaw_provider_config(
+                        model, providers
+                    )
                     config_path = Path("/sandbox/openclaw-eval.json")
-                    config_json = json.dumps(openclaw_config)
+                    config_json = dump_openclaw_provider_config(openclaw_config)
                     # Quay OpenClaw image has node but not python3
                     await sandbox.exec(
                         name,
                         ["tee", str(config_path)],
                         stdin=config_json.encode(),
                     )
-                    sandbox_env["OPENCLAW_CONFIG_PATH"] = str(config_path)
+                    stamp_config_env(sandbox_env, str(config_path))
                     auth_env_only = False
 
                 effort = config.runner.effort

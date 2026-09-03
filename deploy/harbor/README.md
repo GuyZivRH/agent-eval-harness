@@ -211,3 +211,42 @@ cleanup("<ns>")  # deletes all ConfigMaps + Secrets created by agent-eval-harnes
 
 Resource/scheduling knobs: `AGENT_EVAL_K8S_CPU`/`AGENT_EVAL_K8S_MEMORY` (defaults 1 / 2Gi),
 `AGENT_EVAL_K8S_KEEP_RUN=1` (debugging).
+
+## OpenClaw / Forge (Podman)
+
+Run the same Forge eval pack (`eval/openclaw-forge-agent`) on Harbor without the
+OpenShell gateway:
+
+1. Build the OpenClaw trial image (UBI Python + `npm install -g openclaw` +
+   AEH reward bridge — Quay hummingbird has no package manager to layer pip deps):
+
+```bash
+podman build --platform linux/amd64 \
+  -f deploy/harbor/Containerfile.openclaw \
+  -t localhost/agent-eval-openclaw:latest .
+```
+
+2. Point OpenClaw at a host-reachable OpenAI-compatible proxy (Vertex proxy on
+   `:8000`) and export Graph credentials (never commit tokens):
+
+```bash
+export OPENCLAW_INFERENCE_BASE_URL=http://host.containers.internal:8000/v1
+export OPENCLAW_INFERENCE_API_KEY=empty
+export M365_ACCESS_TOKEN=...   # from examples/forge-real/device_login.sh
+export M365_USER=...
+```
+
+3. Run via the wrapper (or `/eval-run --runner harbor --env podman`):
+
+```bash
+./examples/run-openclaw-forge-agent-harbor-eval.sh
+```
+
+`runner.type: openclaw` maps to the AEH custom agent import path
+`agent_eval.harbor.agents.openclaw:OpenClawAgent`. Secrets named
+`M365_ACCESS_TOKEN` / `M365_CLIENT_SECRET` are scrubbed inside the trial after
+the Graph header file is installed (OpenClaw 8.1 exec redaction).
+
+Kubernetes/OpenShift: put the same keys in
+`AGENT_EVAL_K8S_CREDENTIALS_SECRET` (phase 2); Podman forwards them from the
+host via `_FORWARD_ENV` today.

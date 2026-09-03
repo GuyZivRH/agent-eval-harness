@@ -10,6 +10,13 @@ mkdir -p /logs/verifier
 # Harbor writes the agent's output under /logs/agent, not the workspace.
 cat /logs/agent/*.txt > "@@WORKDIR@@/stdout.log" 2>/dev/null || true
 
+# Prefer the Anthropic-messages shim when configured. Host shells often also
+# export ANTHROPIC_VERTEX_PROJECT_ID; score.py would then take the Vertex path
+# and require google-auth inside the trial image.
+if [ -n "${ANTHROPIC_BASE_URL:-}" ]; then
+  unset ANTHROPIC_VERTEX_PROJECT_ID CLOUD_ML_REGION GOOGLE_CLOUD_PROJECT     CLAUDE_CODE_USE_VERTEX GCP_SA_ACCESS_TOKEN || true
+fi
+
 python3 -m agent_eval.harbor.reward \
   --config /tests/eval.yaml \
   --case-dir "@@WORKDIR@@" \

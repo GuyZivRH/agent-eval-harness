@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AEH → OpenShell → Quay OpenClaw 7.2 → real M365 only (tbx-demo2).
+# AEH → OpenShell → Quay OpenClaw → real M365 only (tbx-demo2).
 # Forge evaluation rubrics — Slack deferred until ibm-forge-demo bot token.
 #
 # Prerequisites:
@@ -7,9 +7,18 @@
 #   2) .eval-venv/bin/python examples/forge-real/seed_m365_graph.py  # already done
 #   3) .eval-venv/bin/python examples/claude-vertex-proxy.py         # :8000
 #
+# Image selection (OpenShell path only — Harbor uses localhost/agent-eval-openclaw):
+#   Default: quay.io/aipcc/base-images/agentic/openclaw:latest
+#   Override tag:  OPENCLAW_IMAGE_TAG=2026.8.1-beta.3
+#   Override full: OPENCLAW_IMAGE=... or AGENT_EVAL_OPENSHELL_IMAGE=...
+#   Deprecated:    ALLOW_OPENCLAW_8_1=1 → pins 2026.8.1-beta.3 (warning)
+#   Local: if podman/docker already has the resolved ref, OpenShell uses it
+#          (no forced re-pull from this wrapper).
+#
 # Usage:
 #   ./examples/run-openclaw-forge-agent-eval.sh
 #   ./examples/run-openclaw-forge-agent-eval.sh --cases morning-briefing
+#   OPENCLAW_IMAGE_TAG=2026.8.1-beta.3 ./examples/run-openclaw-forge-agent-eval.sh
 #   FORGE_SOURCES=m365-only ./examples/run-openclaw-forge-agent-eval.sh
 set -euo pipefail
 
@@ -17,11 +26,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${FORGE_REAL_ENV:-${ROOT}/.tmp/forge-real/env}"
 EVAL_YAML="${ROOT}/eval/openclaw-forge-agent/eval.yaml"
 PY="${ROOT}/.eval-venv/bin/python"
-# redhat-et csb-openclaw-only-* fails OpenShell: "OCI USER '1001' resolves to prohibited primary GID 0"
-# aipcc latest is OpenClaw 2026.7.2-beta.7 and provisions cleanly.
-# 8.1 trial image (aipcc; uid/gid 1001 — OpenShell-safe, unlike redhat-et CSB):
-IMG_8_1="quay.io/aipcc/base-images/agentic/openclaw:2026.8.1-beta.3"
-IMG_DEFAULT="quay.io/aipcc/base-images/agentic/openclaw:latest"
+
+OPENCLAW_REPO="${OPENCLAW_REPO:-quay.io/aipcc/base-images/agentic/openclaw}"
+IMG_8_1_TAG="2026.8.1-beta.3"
+IMG_DEFAULT_TAG="latest"
 
 if [[ ! -x "${PY}" ]]; then
   echo "error: missing ${PY} — create .eval-venv first" >&2
@@ -49,12 +57,60 @@ fi
 export M365_USER="${M365_USER:-tbx-demo2@dev.mscloud.ibm.com}"
 export FORGE_SOURCES="${FORGE_SOURCES:-m365-only}"
 
-# Resolve 8.1 allow AFTER sourcing env so CLI + env aliases both work.
-_ALLOW_8_1="${ALLOW_OPENCLAW_8_1:-${ALLOW_OPENCLAW_8_1:-0}}"
-if [[ "${_ALLOW_8_1}" == "1" ]]; then
-  IMG_DEFAULT="${IMG_8_1}"
-fi
+# --- Resolve OpenClaw image (after sourcing env so CLI/env aliases both work) ---
+# Precedence (wrapper-explicit beats a silent env pin, same as old ALLOW_OPENCLAW_8_1):
+#   1. OPENCLAW_IMAGE (full image ref for this run)
+#   2. OPENCLAW_IMAGE_TAG (tag under OPENCLAW_REPO)
+#   3. AGENT_EVAL_OPENSHELL_IMAGE (canonical AEH / forge-real env)
+#   4. ALLOW_OPENCLAW_8_1=1 (deprecated → 8.1 tag; overrides :latest env pin)
+#   5. :latest
+_resolve_openclaw_image() {
+  local image="" tag=""
+  if [[ -n "${OPENCLAW_IMAGE:-}" ]]; then
+    image="${OPENCLAW_IMAGE}"
+  elif [[ -n "${OPENCLAW_IMAGE_TAG:-}" ]]; then
+    tag="${OPENCLAW_IMAGE_TAG}"
+    # Accept either a bare tag or a full ref mistaken for a tag.
+    if [[ "${tag}" == *"/"* || "${tag}" == *":"* ]]; then
+      image="${tag}"
+    else
+      image="${OPENCLAW_REPO}:${tag}"
+    fi
+  elif [[ "${ALLOW_OPENCLAW_8_1:-0}" == "1" ]]; then
+    # Prefer an already-selected 8.1 ref from env; otherwise pin the known 8.1 tag
+    # (overrides a silent …:latest pin from .tmp/forge-real/env).
+    if [[ -n "${AGENT_EVAL_OPENSHELL_IMAGE:-}" ]] \
+      && printf '%s' "${AGENT_EVAL_OPENSHELL_IMAGE}" | grep -qE '8\.1|2026\.8\.1'; then
+      image="${AGENT_EVAL_OPENSHELL_IMAGE}"
+    else
+      image="${OPENCLAW_REPO}:${IMG_8_1_TAG}"
+    fi
+    echo "warning: ALLOW_OPENCLAW_8_1 is deprecated; use OPENCLAW_IMAGE_TAG=${IMG_8_1_TAG} (or OPENCLAW_IMAGE=...)" >&2
+  elif [[ -n "${AGENT_EVAL_OPENSHELL_IMAGE:-}" ]]; then
+    image="${AGENT_EVAL_OPENSHELL_IMAGE}"
+  else
+    image="${OPENCLAW_REPO}:${IMG_DEFAULT_TAG}"
+  fi
+  printf '%s' "${image}"
+}
 
+_local_image_present() {
+  local ref="$1"
+  if command -v podman >/dev/null 2>&1; then
+    podman image exists "${ref}" 2>/dev/null && return 0
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    docker image inspect "${ref}" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+export AGENT_EVAL_OPENSHELL_IMAGE="$(_resolve_openclaw_image)"
+if _local_image_present "${AGENT_EVAL_OPENSHELL_IMAGE}"; then
+  echo "image: local ${AGENT_EVAL_OPENSHELL_IMAGE} (OpenShell will use local store; no forced pull)"
+else
+  echo "image: ${AGENT_EVAL_OPENSHELL_IMAGE} (not in local podman/docker — OpenShell may pull from Quay)"
+fi
 
 # Host-side Graph smoke
 if ! curl -fsS --noproxy '*' -m 20 \
@@ -123,39 +179,21 @@ export EVAL_JUDGE_MODEL="${EVAL_JUDGE_MODEL:-claude-sonnet-4}"
 
 # Must match `openshell gateway list` (registered as localhost, not 127.0.0.1)
 export OPENSHELL_GATEWAY_ENDPOINT="${OPENSHELL_GATEWAY_ENDPOINT:-https://localhost:17670}"
-# .tmp/forge-real/env often pins AGENT_EVAL_OPENSHELL_IMAGE=...:latest (7.2).
-# When an 8.1 trial is explicitly requested, do not let that silent pin win
-# unless the caller already selected an 8.1 tag.
-if [[ "${_ALLOW_8_1}" == "1" ]]; then
-  if ! printf '%s' "${AGENT_EVAL_OPENSHELL_IMAGE:-}" | grep -qE '8\.1|2026\.8\.1'; then
-    export AGENT_EVAL_OPENSHELL_IMAGE="${IMG_8_1}"
-    echo "note: ALLOW_OPENCLAW_8_1=1 forcing image ${IMG_8_1} (overriding env :latest pin if any)"
-  fi
-fi
-export AGENT_EVAL_OPENSHELL_IMAGE="${AGENT_EVAL_OPENSHELL_IMAGE:-${IMG_DEFAULT}}"
 export AGENT_EVAL_OPENSHELL_POLICY="${AGENT_EVAL_OPENSHELL_POLICY:-${ROOT}/deploy/openshell/eval-policy.yaml}"
 export AGENT_EVAL_OPENSHELL_PROVIDER="${AGENT_EVAL_OPENSHELL_PROVIDER:-inference}"
 export AGENT_EVAL_RUNS_DIR="${FORGE_AGENT_EVAL_RUNS_DIR:-${ROOT}/eval/openclaw-forge-agent/eval/runs}"
 
-if printf '%s' "${AGENT_EVAL_OPENSHELL_IMAGE}" | grep -qE '8\.1|2026\.8\.1'; then
-  if [[ "${_ALLOW_8_1}" != "1" ]]; then
-    echo "error: refuse OpenClaw 8.1 unless ALLOW_OPENCLAW_8_1=1 (default pin: quay.io/aipcc/.../openclaw:latest)" >&2
-    exit 1
-  fi
-  echo "warning: ALLOW_OPENCLAW_8_1=1 — using OpenClaw 8.1 image for this trial"
-fi
-
 RUN_ID="${RUN_ID:-forge-m365-$(date +%Y%m%d-%H%M%S)}"
 MODEL="${MODEL:-inference/claude-sonnet-4}"
 
-OC_LABEL="7.2"
-if printf '%s' "${AGENT_EVAL_OPENSHELL_IMAGE}" | grep -qE '8\.1|2026\.8\.1'; then
-  OC_LABEL="8.1"
+OC_LABEL="${AGENT_EVAL_OPENSHELL_IMAGE##*:}"
+if [[ -z "${OC_LABEL}" || "${OC_LABEL}" == "${AGENT_EVAL_OPENSHELL_IMAGE}" ]]; then
+  OC_LABEL="openclaw"
 fi
 
 echo "RUN_ID=${RUN_ID} model=${MODEL} judge=${EVAL_JUDGE_MODEL}"
 echo "image=${AGENT_EVAL_OPENSHELL_IMAGE}"
-echo "stack: AEH → OpenShell → OpenClaw ${OC_LABEL} → M365 Graph only (Slack deferred)"
+echo "stack: AEH → OpenShell → OpenClaw (${OC_LABEL}) → M365 Graph only (Slack deferred)"
 echo "judges: via ${ANTHROPIC_BASE_URL} (not direct Vertex ADC)"
 
 cd "${ROOT}"
