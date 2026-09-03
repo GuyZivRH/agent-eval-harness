@@ -1,0 +1,45 @@
+# Custom OpenShell sandbox with OpenClaw agent pre-installed
+# Includes Node.js 24+ to satisfy OpenClaw's SQLite WAL safety requirements
+#
+# Build:
+#   podman build -t openclaw-sandbox -f deploy/openshell/Containerfile.openclaw .
+#
+# Use with OpenShell:
+#   export AGENT_EVAL_OPENSHELL_IMAGE=localhost/openclaw-sandbox:latest
+
+FROM ghcr.io/nvidia/openshell-community/sandboxes/base:latest
+
+# Install Node.js 24 (satisfies OpenClaw's >=22.22.3 <23, >=24.15.0 <25, or >=25.9.0 requirement)
+# The base image has Node 22.22.1 which is affected by the SQLite WAL-reset bug
+USER root
+
+# Add NodeSource repository for Node.js 24
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Verify Node.js version meets OpenClaw requirements
+RUN node --version && \
+    echo "Node.js installed successfully"
+
+# Install OpenClaw globally
+RUN npm install -g openclaw@latest && \
+    openclaw --version
+
+# Create workspace directory structure with proper permissions
+# The sandbox user (uid 998) needs write access to these directories
+RUN mkdir -p /sandbox/.openclaw/workspace /sandbox/.openclaw/state /sandbox/.config/openclaw && \
+    chown -R 998:998 /sandbox/.openclaw /sandbox/.config
+
+# Switch back to sandbox user (uid 998 in OpenShell base image)
+USER 998
+
+# Set environment for OpenClaw
+ENV PATH="/usr/bin:$PATH"
+ENV HOME="/sandbox"
+
+# Verify installation
+RUN openclaw --version
+
+WORKDIR /sandbox

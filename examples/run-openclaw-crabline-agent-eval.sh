@@ -47,7 +47,9 @@ if [[ ! -f "${EVAL_YAML}" ]]; then
 fi
 
 # Fail fast if :8000 is not a tool-aware Vertex proxy.
-if ! curl -sf -m 2 http://127.0.0.1:8000/health >/dev/null; then
+# --noproxy: Cursor shells often set HTTP_PROXY to a dead local forwarder that
+# breaks 127.0.0.1 even when NO_PROXY lists localhost. -m 10: proxy can be slow.
+if ! curl -sf --noproxy '*' -m 10 http://127.0.0.1:8000/health >/dev/null; then
   echo "error: nothing healthy on :8000 — start:" >&2
   echo "  .eval-venv/bin/python examples/claude-vertex-proxy.py" >&2
   exit 1
@@ -95,6 +97,9 @@ export AGENT_EVAL_OPENSHELL_IMAGE="${AGENT_EVAL_OPENSHELL_IMAGE:-quay.io/aipcc/b
 export AGENT_EVAL_OPENSHELL_POLICY="${AGENT_EVAL_OPENSHELL_POLICY:-${ROOT}/deploy/openshell/eval-policy.yaml}"
 export AGENT_EVAL_OPENSHELL_PROVIDER="${AGENT_EVAL_OPENSHELL_PROVIDER:-inference}"
 export AGENT_EVAL_RUNS_DIR="${CRABLINE_AGENT_EVAL_RUNS_DIR:-${ROOT}/eval/openclaw-crabline-agent/eval/runs}"
+# Dedicated Vertex Claude region — leave CLOUD_ML_REGION alone (may be global).
+export ANTHROPIC_VERTEX_REGION="${ANTHROPIC_VERTEX_REGION:-us-east5}"
+export ANTHROPIC_VERTEX_PROJECT_ID="${ANTHROPIC_VERTEX_PROJECT_ID:-itpc-gcp-eco-eng-claude}"
 
 RUN_ID="${RUN_ID:-crabline-agent-$(date +%Y%m%d-%H%M%S)}"
 MODEL="${MODEL:-inference/claude-sonnet-4}"

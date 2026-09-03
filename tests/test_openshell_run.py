@@ -10,6 +10,7 @@ import yaml
 
 import agent_eval._bootstrap
 from agent_eval.openshell.run import (
+    _apply_m365_file_auth_env,
     _child_env,
     _resolve_prompt,
     _sandbox_env,
@@ -120,6 +121,29 @@ class TestSandboxEnv:
         env = _sandbox_env(config)
         
         assert "UNRESOLVED" not in env
+
+
+class TestApplyM365FileAuthEnv:
+    """OpenClaw 8.1-safe Graph auth: header file env, drop secret-named token."""
+
+    def test_promotes_token_to_header_file_env(self):
+        env = {
+            "M365_ACCESS_TOKEN": "eyJhbGciOiJSUzI1NiJ9.aaa.bbb",
+            "M365_USER": "demo@example.com",
+            "M365_CLIENT_SECRET": "shh",
+        }
+        token = _apply_m365_file_auth_env(env)
+        assert token == "eyJhbGciOiJSUzI1NiJ9.aaa.bbb"
+        assert "M365_ACCESS_TOKEN" not in env
+        assert "M365_CLIENT_SECRET" not in env
+        assert env["M365_USER"] == "demo@example.com"
+        assert env["M365_AUTH_HEADER_FILE"].endswith("m365.header")
+        assert env["M365_GRAPH_CURL"].endswith("graph-curl")
+
+    def test_noop_without_token(self):
+        env = {"M365_USER": "demo@example.com"}
+        assert _apply_m365_file_auth_env(env) is None
+        assert env == {"M365_USER": "demo@example.com"}
 
 
 class TestResolvePrompt:

@@ -1,0 +1,53 @@
+# Phase-1.5: AEH scores Crabline Slack recorder after a Quay sandbox posts.
+# Does NOT use OpenClaw gateway Slack (segfault on Quay 2026.7.2-beta.7).
+# Runner is CLI curl inside the OpenShell sandbox → host Crabline.
+name: openclaw-crabline
+
+runner:
+  type: cli
+  # Case upload nests at /sandbox/{case_id}/; {args} = marker text
+  command: >
+    /bin/sh /sandbox/{case_id}/post-to-crabline.sh '{args}'
+
+execution:
+  mode: case
+  prompt: "{{ input.marker_text }}"
+  timeout: 120
+  env:
+    SLACK_API_URL: "http://host.openshell.internal:8787/api/"
+    SLACK_BOT_TOKEN: "$SLACK_BOT_TOKEN"
+
+dataset:
+  path: cases
+  workspace:
+    files:
+      - post-to-crabline.sh
+  schema: |
+    Each case has:
+    - input.yaml: marker_text (unique string embedded in chat.postMessage)
+    - annotations.yaml: expected_text (same marker for the Crabline recorder judge)
+    - post-to-crabline.sh: sandbox script (conversations.open + chat.postMessage)
+
+outputs:
+  - path: output
+    schema: |
+      response.txt: sandbox script stdout / API summary
+      crabline-hits.jsonl: matching recorder lines (written by the judge)
+
+judges:
+  - name: crabline_accepted_post
+    module: agent_eval.openshell.crabline_score
+    function: score_accepted_post_message
+    feedback_type: bool
+
+  - name: response_received
+    check: |
+      response = outputs.get("output_content", "") or ""
+      return "ok" in response.lower() and "chat.postMessage" in response
+    feedback_type: bool
+
+thresholds:
+  crabline_accepted_post:
+    min_pass_rate: 1.0
+  response_received:
+    min_pass_rate: 1.0

@@ -1,0 +1,30 @@
+# Slack app manifest for slack-send-service's real write-scoped USER token.
+#
+# Deliberately a *separate* app from slack-read-app-manifest.yaml — see that file's header
+# comment for why (one user token per app, covering the union of its granted scopes). This app
+# requests only chat:write and has no bot user: it exists solely to mint a write-only xoxp- user
+# token, used exclusively by chat.scheduleMessage / chat.deleteScheduledMessage.
+#
+# Create at https://api.slack.com/apps/new -> "From a manifest" -> paste this file, then:
+#   1. OAuth & Permissions -> Install to Workspace (chat:write is pre-filled under
+#      "User Token Scopes").
+#   2. The installing user must be a member of whatever channel(s) you want to send to — Slack
+#      has no per-channel chat:write scope, so this token can post as that user to any
+#      conversation they can reach (see the design's "why writes are isolated" discussion and
+#      this repo's README "Accepted milestone-1 limitations").
+#   3. Copy the "User OAuth Token" (xoxp-...) into SLACK_WRITE_USER_TOKEN in your .env.
+
+display_information:
+  name: Forge Slack Send Service
+  description: Write-only Slack user-token source for rust-slack-proxy's slack-send-service (milestone 1)
+  background_color: "#8a4b2c"
+
+oauth_config:
+  scopes:
+    user:
+      - chat:write
+
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

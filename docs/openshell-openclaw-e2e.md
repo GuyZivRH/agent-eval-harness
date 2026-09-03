@@ -284,7 +284,8 @@ unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
 export NO_PROXY='*' no_proxy='*'
 
 export ANTHROPIC_VERTEX_PROJECT_ID="${ANTHROPIC_VERTEX_PROJECT_ID:-itpc-gcp-eco-eng-claude}"
-export CLOUD_ML_REGION="${CLOUD_ML_REGION:-us-east5}"
+# Dedicated Claude/Vertex region — do not reuse CLOUD_ML_REGION (often "global").
+export ANTHROPIC_VERTEX_REGION="${ANTHROPIC_VERTEX_REGION:-us-east5}"
 export GOOGLE_APPLICATION_CREDENTIALS="${GOOGLE_APPLICATION_CREDENTIALS:-$HOME/.config/gcloud/application_default_credentials.json}"
 
 cd /Users/gziv/Dev/agent-eval-harness

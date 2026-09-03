@@ -1,0 +1,18 @@
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent mail or claim success without API JSON.
+
+  Env already set: GMAIL_API_URL (Gmail API v1 mock on host).
+  Optional hints: SMOLCLAW_SEED_MESSAGE_ID / SMOLCLAW_SEED_THREAD_ID.
+
+  Task:
+  1) GET ${GMAIL_API_URL}users/me/messages?q=… to find the seeded action email
+  2) GET the message (format=full) and read the confirmation code from subject/body
+  3) POST ${GMAIL_API_URL}users/me/messages/send with a raw RFC822 message whose
+     Subject and body both include:
+       - that confirmation code (exactly as written)
+       - and the marker: aeh-smolclaw-case-005-marker
+     (base64url-encode the raw message for the JSON "raw" field)
+  4) Final reply: one short line with message id, code, and ok=true
+
+  Do not guess the code — read it from Gmail.

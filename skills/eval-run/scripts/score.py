@@ -1723,6 +1723,16 @@ def _load_code_judge(jc, project_root=None):
     return fn
 
 
+# Short aliases used in eval.yaml / OpenClaw → Vertex publisher model IDs.
+# AnthropicVertex requires the dated publisher id; bare "claude-sonnet-4"
+# resolves to a non-existent global resource and gets IAM 403.
+_VERTEX_JUDGE_MODEL_ALIASES = {
+    "claude-sonnet-4": "claude-sonnet-4-5@20250929",
+    "claude-sonnet": "claude-sonnet-4-5@20250929",
+    "claude": "claude-sonnet-4-5@20250929",
+}
+
+
 def _resolve_judge_model(jc, config):
     """Resolve LLM judge model: per-judge > models.judge > env > error."""
     model = jc.model or config.models.judge or os.environ.get("EVAL_JUDGE_MODEL")
@@ -1731,6 +1741,8 @@ def _resolve_judge_model(jc, config):
             f"No model configured for LLM judge '{jc.name}'. Set per-judge "
             "'model:', top-level 'models.judge:' in eval.yaml, or "
             "EVAL_JUDGE_MODEL env var.")
+    if os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID"):
+        model = _VERTEX_JUDGE_MODEL_ALIASES.get(model, model)
     return model
 
 
@@ -2345,7 +2357,9 @@ def _first_content(record):
 
 def _get_anthropic_client():
     project_id = os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID")
-    region = os.environ.get("CLOUD_ML_REGION", "us-east5")
+    # Prefer ANTHROPIC_VERTEX_REGION so a machine-wide CLOUD_ML_REGION=global
+    # (used by other GCP tools) does not force Vertex Claude onto /locations/global.
+    region = os.environ.get("ANTHROPIC_VERTEX_REGION") or "us-east5"
     if project_id:
         from anthropic import AnthropicVertex
         access_token = os.environ.get("GCP_SA_ACCESS_TOKEN")

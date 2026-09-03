@@ -1,0 +1,17 @@
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT invent calendar events or claim success without API JSON.
+
+  Env already set: CALENDAR_API_URL (Google Calendar v3 mock on host).
+  Optional hint: SMOLCLAW_SEED_EVENT_ID.
+
+  Task:
+  1) GET ${CALENDAR_API_URL}calendars/primary/events (optionally with q=)
+  2) Find the seeded event whose description asks you to confirm with a code
+  3) POST ${CALENDAR_API_URL}calendars/primary/events creating ONE new event whose
+     summary AND description both include:
+       - that confirmation code (exactly as written)
+       - and the marker: aeh-smolclaw-case-004-marker
+  4) Final reply: one short line with new event id, code, and ok=true
+
+  Do not guess the code — read it from calendar events.

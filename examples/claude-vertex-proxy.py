@@ -29,18 +29,28 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 app = FastAPI(title="claude-vertex-proxy")
 
+# Use ANTHROPIC_VERTEX_REGION only — do not read CLOUD_ML_REGION.
+# Many machines set CLOUD_ML_REGION=global for other GCP tools; Vertex Claude
+# requires a regional endpoint (us-east5) and IAM-denies predict on global.
 client = anthropic.AnthropicVertex(
     project_id=os.environ.get(
         "ANTHROPIC_VERTEX_PROJECT_ID", "itpc-gcp-eco-eng-claude"
     ),
-    region=os.environ.get("CLOUD_ML_REGION", "us-east5"),
+    region=os.environ.get("ANTHROPIC_VERTEX_REGION", "us-east5"),
 )
 
 # Names OpenClaw / OpenShell send → Vertex model IDs
+# Opus aliases: this Vertex project has claude-opus-4-6 (4.8 may 429 on quota;
+# older @dated opus publisher IDs 404 here).
 MODEL_MAP = {
     "claude-sonnet-4": "claude-sonnet-4-5@20250929",
     "claude-sonnet": "claude-sonnet-4-5@20250929",
     "claude": "claude-sonnet-4-5@20250929",
+    "claude-opus-4": "claude-opus-4-6",
+    "claude-opus-4-6": "claude-opus-4-6",
+    "claude-opus-4-1": "claude-opus-4-6",
+    "claude-opus": "claude-opus-4-6",
+    "opus": "claude-opus-4-6",
 }
 
 

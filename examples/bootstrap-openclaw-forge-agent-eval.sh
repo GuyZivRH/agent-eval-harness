@@ -22,7 +22,8 @@ name: forge-eval-rubrics
 scene: monday-acquisition
 
 models:
-  judge: claude-sonnet-4
+  # Vertex publisher id (short alias "claude-sonnet-4" also remapped in score.py)
+  judge: claude-sonnet-4-5@20250929
 
 runner:
   type: openclaw

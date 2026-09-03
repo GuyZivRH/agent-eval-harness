@@ -1,0 +1,26 @@
+# Excerpt from forge-outlook-slack onboarding.toml (placeholders only; no secrets).
+# The front proxy relays every provider OAuth redirect here.
+redirect_uri = "@@FORGE_ENTRY_ORIGIN@@/oauth/callback"
+# Resolved at deploy: https://<FORGE_ENTRY_HOST>/oauth/callback
+# Local 127.0.0.1 callbacks are NOT this URI and are not registered by default.
+
+[[providers]]
+id = "slack"
+kind = "slack"
+display_name = "Slack"
+
+[providers.owner_match]
+type = "slack"
+team_id = "@@FORGE_SLACK_TEAM_ID@@"
+
+[[providers.grants]]
+id = "read"
+openshell_provider_name = "slack-read"
+openshell_provider_type = "slack-read"
+openshell_credential_key = "user_token"
+openshell_workspace = "default"
+scopes = ["channels:history", "groups:history", "channels:read", "groups:read", "users:read", "users:read.email", "search:read"]
+
+[providers.grants.oauth]
+client_id = "@@FORGE_SLACK_READ_CLIENT_ID@@"
+# client_secret_file is a path inside the onboarding sandbox — not used for local AEH eval

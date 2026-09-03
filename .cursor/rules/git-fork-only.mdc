@@ -1,0 +1,42 @@
+---
+description: Git remotes — only GuyZivRH fork; never push/commit to opendatahub-io upstream
+alwaysApply: true
+---
+
+# Git: fork only (GuyZivRH), not upstream
+
+This checkout tracks **two remotes**. Agents must treat them as follows.
+
+| Remote | URL | Role |
+|--------|-----|------|
+| `fork` | `https://github.com/GuyZivRH/agent-eval-harness.git` | **Allowed** — default for branch work, commits, push |
+| `origin` | `git@github.com:opendatahub-io/agent-eval-harness.git` | **Upstream read-only** for this project — do **not** push or land work here |
+
+## Do
+
+- Commit and push only to **`fork`** (`GuyZivRH/agent-eval-harness`).
+- Base new branches on **`fork/main`** (or an existing fork feature branch), not on `origin/main`.
+- When comparing “how far from main”, prefer **`fork/main`** unless the user explicitly names upstream.
+- `git fetch origin` is OK for awareness; do not update upstream with our commits.
+
+## Don’t
+
+- Do **not** `git push origin …` (especially not `origin/main` or any `opendatahub-io` branch).
+- Do **not** open or merge PRs into **`opendatahub-io/agent-eval-harness`** unless the user explicitly overrides this rule in the current message.
+- Do **not** rebase/merge our Forge/OpenShell work onto upstream `origin/main` as the default integration target — use **`fork/main`**.
+
+## Examples
+
+```bash
+# ✅ GOOD
+git fetch fork
+git rebase fork/main
+git push -u fork HEAD
+
+# ❌ BAD
+git push origin HEAD
+git push origin main
+gh pr create --repo opendatahub-io/agent-eval-harness …
+```
+
+If the user says “upstream” or `opendatahub-io` without an explicit override, remind them this project is **fork-only** and continue on `fork`.

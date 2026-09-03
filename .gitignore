@@ -9,9 +9,11 @@ build/
 .eval-venv/
 venv/
 
-# Eval runs and state
+# Eval runs and state (top-level and per-pack layouts)
 eval/runs/
+**/eval/runs/
 tmp/
+.tmp/
 
 # MLflow
 mlflow.db

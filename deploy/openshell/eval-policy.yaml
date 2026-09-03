@@ -127,3 +127,61 @@ network_policies:
       - path: /usr/local/bin/node
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Real Slack Web API (ibm-forge-demo) — HTTP/API-read path (not Socket Mode)
+  slack_api:
+    name: slack-api
+    endpoints:
+      - host: slack.com
+        port: 443
+        protocol: rest
+        access: full
+      - host: "*.slack.com"
+        port: 443
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/sbin/curl
+      - path: /usr/bin/node
+      - path: /usr/sbin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /usr/local/sbin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+      - path: /usr/bin/npx
+      - path: /usr/local/bin/npx
+
+  # Microsoft Graph + Entra ID (M365 mail/calendar for tbx-demo3)
+  m365_graph:
+    name: m365-graph
+    endpoints:
+      - host: graph.microsoft.com
+        port: 443
+        protocol: rest
+        access: full
+      - host: login.microsoftonline.com
+        port: 443
+        protocol: rest
+        access: full
+      - host: "*.microsoftonline.com"
+        port: 443
+        protocol: rest
+        access: full
+      - host: "*.microsoft.com"
+        port: 443
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/sbin/curl
+      - path: /usr/bin/node
+      - path: /usr/sbin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /usr/local/sbin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+      - path: /usr/bin/npx
+      - path: /usr/local/bin/npx
+      - path: /usr/bin/m365
+      - path: /usr/local/bin/m365

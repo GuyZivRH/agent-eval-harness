@@ -62,7 +62,7 @@ class OpenShellSandbox:
         """Construct from environment variables.
 
         Environment variables:
-            OPENSHELL_GATEWAY_ENDPOINT: Gateway URL (default: https://127.0.0.1:17670)
+            OPENSHELL_GATEWAY_ENDPOINT: Gateway URL (default: https://localhost:17670)
             AGENT_EVAL_OPENSHELL_POLICY: Path to policy YAML
             AGENT_EVAL_OPENSHELL_PROVIDER: Provider name for auth
 
@@ -72,7 +72,7 @@ class OpenShellSandbox:
         policy_path = os.environ.get("AGENT_EVAL_OPENSHELL_POLICY")
         return cls(
             gateway_endpoint=os.environ.get(
-                "OPENSHELL_GATEWAY_ENDPOINT", "https://127.0.0.1:17670"
+                "OPENSHELL_GATEWAY_ENDPOINT", "https://localhost:17670"
             ),
             policy_file=Path(policy_path) if policy_path else None,
             provider=os.environ.get("AGENT_EVAL_OPENSHELL_PROVIDER"),

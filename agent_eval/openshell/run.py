@@ -44,6 +44,10 @@ SCRIPTS_DIR = Path(__file__).parents[2] / "skills" / "eval-run" / "scripts"
 # Quay 2026.7.x has no harvestable trajectory (SQLite is wiped with the temp dir).
 _OPENCLAW_STATE_DIR = Path("/sandbox/.openclaw")
 _OPENCLAW_TMP_DIR = Path("/sandbox/tmp")
+# OpenClaw 8.1+ redacts secret-named env values inside exec (Bearer ***). Deliver
+# Graph auth via curl ``-H @file`` under the workspace instead of $M365_ACCESS_TOKEN.
+_M365_AUTH_HEADER_FILE = _OPENCLAW_STATE_DIR / "tmp" / "m365.header"
+_M365_GRAPH_CURL = _OPENCLAW_STATE_DIR / "tmp" / "graph-curl"
 
 # Environment variables to forward to sandbox (mirrors Harbor's _FORWARD_ENV)
 _FORWARD_ENV = (
@@ -57,6 +61,10 @@ _FORWARD_ENV = (
     "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
     "AWS_BEARER_TOKEN_BEDROCK",
     "OPENAI_API_KEY",
+    # Forge real-SaaS path (Slack Web API + Microsoft Graph)
+    "SLACK_BOT_TOKEN", "SLACK_API_URL",
+    "M365_ACCESS_TOKEN", "M365_USER",
+    "M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET",
 )
 
 
@@ -260,6 +268,68 @@ def _sandbox_env(config: EvalConfig) -> Dict[str, str]:
                 else:
                     env[key] = str(value)
     return env
+
+
+def _apply_m365_file_auth_env(
+    sandbox_env: Dict[str, str],
+    *,
+    header_path: str = str(_M365_AUTH_HEADER_FILE),
+    curl_path: str = str(_M365_GRAPH_CURL),
+) -> Optional[str]:
+    """Point sandbox env at file-based Graph auth; drop secret-named token env.
+
+    Returns the bearer token when file auth should be installed, else None.
+    OpenClaw 8.1 substitutes ``***`` for secret env values inside exec/curl, so
+    agents must use ``curl -H @$M365_AUTH_HEADER_FILE`` (or ``$M365_GRAPH_CURL``)
+    instead of ``Authorization: Bearer $M365_ACCESS_TOKEN``.
+    """
+    token = sandbox_env.get("M365_ACCESS_TOKEN")
+    if not token:
+        return None
+    sandbox_env["M365_AUTH_HEADER_FILE"] = header_path
+    sandbox_env["M365_GRAPH_CURL"] = curl_path
+    # Keep token out of agent-visible secret-named env (8.1 exec redaction).
+    sandbox_env.pop("M365_ACCESS_TOKEN", None)
+    sandbox_env.pop("M365_CLIENT_SECRET", None)
+    return token
+
+
+async def _install_m365_graph_auth(
+    sandbox: OpenShellSandbox,
+    name: str,
+    sandbox_env: Dict[str, str],
+) -> bool:
+    """Write Graph Authorization header + curl helper into the sandbox workspace."""
+    token = _apply_m365_file_auth_env(sandbox_env)
+    if not token:
+        return False
+
+    header_path = Path(sandbox_env["M365_AUTH_HEADER_FILE"])
+    curl_path = Path(sandbox_env["M365_GRAPH_CURL"])
+    await sandbox.exec(name, ["mkdir", "-p", str(header_path.parent)])
+    header_body = f"Authorization: Bearer {token}\n"
+    await sandbox.exec(
+        name,
+        ["tee", str(header_path)],
+        stdin=header_body.encode(),
+    )
+    await sandbox.exec(name, ["chmod", "600", str(header_path)])
+    helper = (
+        "#!/bin/sh\n"
+        "# AEH helper: Graph auth via header file (OpenClaw 8.1-safe)\n"
+        f'exec curl -sS -H @"{header_path}" "$@"\n'
+    )
+    await sandbox.exec(
+        name,
+        ["tee", str(curl_path)],
+        stdin=helper.encode(),
+    )
+    await sandbox.exec(name, ["chmod", "755", str(curl_path)])
+    logger.info(
+        "Installed M365 Graph auth header at %s (token removed from sandbox env)",
+        header_path,
+    )
+    return True
 
 
 def _resolve_prompt(config: EvalConfig, case_data: dict) -> str:
@@ -710,6 +780,9 @@ async def _run_case(
             # Build env to forward to sandbox (API keys + config env)
             sandbox_env = _sandbox_env(config)
             sandbox_env.update({k: v for k, v in sandbox_env_extra.items() if v})
+            # OpenClaw 8.1 redacts $M365_ACCESS_TOKEN inside exec → Bearer ***.
+            # Materialize curl -H @file auth under the workspace before the agent runs.
+            await _install_m365_graph_auth(sandbox, name, sandbox_env)
 
             # Build command based on runner type
             # Default depends on whether providers are configured (OpenClaw) or not (Claude Code)

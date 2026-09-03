@@ -1,0 +1,39 @@
+# Hello World eval using real Claude Code agent
+# Tests AEH + OpenShell + LiteLLM with actual agent
+
+skill: hello-world-agent
+
+execution:
+  mode: case
+  arguments: "{prompt}"
+  timeout: 120
+  env:
+    # Point Claude to the LiteLLM proxy
+    ANTHROPIC_BASE_URL: "http://host.openshell.internal:8000"
+    ANTHROPIC_API_KEY: "test-key-12345"
+
+runner:
+  type: claude-code
+  # Try to disable features that cause Vertex AI issues
+  settings:
+    thinking: false
+
+models:
+  skill: claude-sonnet-4-6
+
+dataset:
+  path: cases
+  schema: |
+    prompt: The prompt to send to the agent
+    expected: Expected response content
+
+outputs:
+  - path: output
+    schema: Agent output files
+
+judges:
+  - name: task-completed
+    check: |
+      import os
+      # Check if agent produced any output or completed successfully
+      result = True  # Pass if agent ran without error

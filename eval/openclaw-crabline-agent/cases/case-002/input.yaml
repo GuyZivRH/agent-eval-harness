@@ -1,0 +1,19 @@
+prompt: |
+  CRITICAL: Call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT paste bash in markdown instead of calling exec.
+  Do NOT invent Slack history or message text.
+
+  Env already set: SLACK_API_URL, SLACK_BOT_TOKEN.
+  Optional hints: CRABLINE_SEED_CHANNEL / CRABLINE_SEED_TS.
+  This case uses Slack user UCASE002 only (isolated DM — do not open other users).
+
+  Task:
+  1) conversations.open with users=UCASE002
+  2) conversations.history on that channel
+  3) Find the action message that asks you to confirm with a code
+  4) chat.postMessage with ONE message that includes:
+       - the confirmation code from history (exactly as written there)
+       - and the marker: aeh-crabline-agent-case-002-marker
+  5) Final reply: one short line with the code you posted and ok=true
+
+  Do not guess the code. It must come from conversations.history for UCASE002.

@@ -1,0 +1,13 @@
+prompt: |
+  CRITICAL: You must call the OpenClaw `exec` tool to run real curl commands.
+  Do NOT paste bash in markdown instead of calling exec.
+  Do NOT invent channel ids or claim success without curl JSON stdout.
+
+  Goal: post a Slack message to the host Crabline mock API.
+
+  Env already set: SLACK_API_URL, SLACK_BOT_TOKEN.
+  This case uses Slack user UCASE001 only (isolated DM — do not use other users).
+
+  1) conversations.open with users=UCASE001
+  2) chat.postMessage with text exactly: aeh-crabline-agent-case-001-marker
+  3) Final reply: one short line with channel id and ok=true
