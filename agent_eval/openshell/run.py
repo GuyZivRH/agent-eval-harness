@@ -842,7 +842,12 @@ async def _run_case(
                 cmd.append(prompt)
                 stdin_data = None
 
-            logger.info(f"Executing case {case_id} in sandbox {name}")
+            logger.info(
+                "Executing case %s in sandbox %s argv=%s",
+                case_id,
+                name,
+                cmd[:-1] if len(cmd) > 1 else cmd,
+            )
             timeout = (config.execution.timeout or 600) + 60
             result = await sandbox.exec(
                 name,
@@ -853,6 +858,15 @@ async def _run_case(
                 timeout_s=timeout,
             )
             duration_s = time.monotonic() - start_time
+            if result.return_code:
+                logger.warning(
+                    "Case %s sandbox exec rc=%s duration=%.2fs stderr=%r stdout=%r",
+                    case_id,
+                    result.return_code,
+                    duration_s,
+                    (result.stderr or "")[:800],
+                    (result.stdout or "")[:400],
+                )
 
             for output in config.outputs or []:
                 if output.path:

@@ -10,6 +10,7 @@ from agent_eval.openshell.sandbox import (
     CREATE_KEEPALIVE,
     ExecResult,
     OpenShellSandbox,
+    bundled_eval_policy,
 )
 
 
@@ -29,8 +30,21 @@ class TestOpenShellSandbox:
         sandbox = OpenShellSandbox.from_env()
 
         assert sandbox.gateway == "https://127.0.0.1:17670"
-        assert sandbox.policy is None
+        assert sandbox.policy == bundled_eval_policy()
+        assert sandbox.policy is not None
+        assert sandbox.policy.name == "eval-policy.yaml"
         assert sandbox.provider is None
+
+    def test_from_env_empty_policy_uses_bundled(self, monkeypatch):
+        monkeypatch.setenv("AGENT_EVAL_OPENSHELL_POLICY", "  ")
+        sandbox = OpenShellSandbox.from_env()
+        assert sandbox.policy == bundled_eval_policy()
+
+    def test_bundled_eval_policy_allows_opt_openclaw(self):
+        path = bundled_eval_policy()
+        assert path is not None
+        text = path.read_text()
+        assert "/opt/openclaw" in text
 
     def test_from_env_with_values(self, monkeypatch):
         monkeypatch.setenv("OPENSHELL_GATEWAY_ENDPOINT", "https://gateway.example.com:8080")

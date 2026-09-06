@@ -21,6 +21,17 @@ logger = logging.getLogger(__name__)
 # returns once the sandbox is Ready instead of attaching to the keep-alive.
 CREATE_KEEPALIVE = ["sleep", "infinity"]
 
+# Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
+# that tree, so exec of the ``openclaw`` shebang returns 126 (EACCES).
+_BUNDLED_EVAL_POLICY = (
+    Path(__file__).resolve().parents[2] / "deploy" / "openshell" / "eval-policy.yaml"
+)
+
+
+def bundled_eval_policy() -> Optional[Path]:
+    """Return the repo eval-policy.yaml if present (allows /opt/openclaw)."""
+    return _BUNDLED_EVAL_POLICY if _BUNDLED_EVAL_POLICY.is_file() else None
+
 
 @dataclass
 class ExecResult:
@@ -70,18 +81,26 @@ class OpenShellSandbox:
 
         Environment variables:
             OPENSHELL_GATEWAY_ENDPOINT: Gateway URL (default: https://127.0.0.1:17670)
-            AGENT_EVAL_OPENSHELL_POLICY: Path to policy YAML
+            AGENT_EVAL_OPENSHELL_POLICY: Path to policy YAML. When unset, uses
+                ``deploy/openshell/eval-policy.yaml`` so Quay OpenClaw under
+                ``/opt/openclaw`` is readable (otherwise ``openclaw`` exits 126).
             AGENT_EVAL_OPENSHELL_PROVIDER: Provider name for auth
 
         Returns:
             Configured OpenShellSandbox instance.
         """
-        policy_path = os.environ.get("AGENT_EVAL_OPENSHELL_POLICY")
+        env_policy = os.environ.get("AGENT_EVAL_OPENSHELL_POLICY", "").strip()
+        if env_policy:
+            policy_file = Path(env_policy)
+        else:
+            policy_file = bundled_eval_policy()
+            if policy_file is not None:
+                logger.info("Using bundled OpenShell eval policy %s", policy_file)
         return cls(
             gateway_endpoint=os.environ.get(
                 "OPENSHELL_GATEWAY_ENDPOINT", "https://127.0.0.1:17670"
             ),
-            policy_file=Path(policy_path) if policy_path else None,
+            policy_file=policy_file,
             provider=os.environ.get("AGENT_EVAL_OPENSHELL_PROVIDER"),
         )
 
