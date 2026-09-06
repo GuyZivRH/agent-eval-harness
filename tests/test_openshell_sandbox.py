@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_eval.openshell.sandbox import ExecResult, OpenShellSandbox
+from agent_eval.openshell.sandbox import (
+    CREATE_KEEPALIVE,
+    ExecResult,
+    OpenShellSandbox,
+)
 
 
 def run_async(coro):
@@ -70,9 +74,27 @@ class TestOpenShellSandboxCreate:
             assert "quay.io/org/image:v1" in cmd
             assert "--no-tty" in cmd
             assert "--no-auto-providers" in cmd
-            assert "--" in cmd
-            assert "echo" in cmd
+            assert "--detach" in cmd
+            assert cmd[cmd.index("--"):] == ["--"] + CREATE_KEEPALIVE
+            assert "echo" not in cmd
         
+        run_async(_test())
+
+    def test_create_uses_detach_and_keepalive(self):
+        sandbox = OpenShellSandbox(gateway_endpoint="https://gw:1234")
+
+        async def _test():
+            with patch.object(sandbox, "_run", new_callable=AsyncMock) as mock_run:
+                await sandbox.create("test", "image:v1")
+
+            cmd = mock_run.call_args[0][0]
+            sep = cmd.index("--")
+            assert "--detach" in cmd[:sep]
+            assert cmd[sep:] == ["--"] + CREATE_KEEPALIVE
+            assert CREATE_KEEPALIVE == ["sleep", "infinity"]
+            assert cmd[-3:] != ["echo", "sandbox", "ready"]
+            assert cmd[-2:] != ["sandbox", "ready"]
+
         run_async(_test())
 
     def test_create_with_policy(self):

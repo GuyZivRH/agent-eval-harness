@@ -14,6 +14,13 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Kubernetes sandboxes use restartPolicy Never: the argv after `--` is the
+# pod main process. A short-lived command (e.g. `echo`) exits immediately and
+# the gateway reports PodFailed. OpenClaw images typically include `sleep`
+# (and Node); they often lack python3. `--detach` (OpenShell >= 0.0.111)
+# returns once the sandbox is Ready instead of attaching to the keep-alive.
+CREATE_KEEPALIVE = ["sleep", "infinity"]
+
 
 @dataclass
 class ExecResult:
@@ -85,6 +92,10 @@ class OpenShellSandbox:
     async def create(self, name: str, image: str) -> str:
         """Create sandbox and wait until Ready.
 
+        The create command uses ``--detach`` plus a long-lived keep-alive so the
+        sandbox main process stays up. On Kubernetes (restartPolicy Never) a
+        short-lived command such as ``echo`` makes the pod Failed.
+
         Args:
             name: Unique sandbox name.
             image: Container image with OpenClaw pre-installed.
@@ -104,12 +115,13 @@ class OpenShellSandbox:
             image,
             "--no-tty",
             "--no-auto-providers",
+            "--detach",
         ]
         if self.policy:
             cmd.extend(["--policy", str(self.policy)])
         if self.provider:
             cmd.extend(["--provider", self.provider])
-        cmd.extend(["--", "echo", "sandbox ready"])
+        cmd.extend(["--"] + CREATE_KEEPALIVE)
         await self._run(cmd)
         return name
 
