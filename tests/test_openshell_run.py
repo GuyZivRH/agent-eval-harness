@@ -10,9 +10,17 @@ import yaml
 
 import agent_eval._bootstrap
 from agent_eval.openshell.run import (
+    _M365_FORWARD_ENV,
+    _M365_GRAPH_CURL_PATH,
+    _M365_HEADER_PATH,
     _child_env,
+    _install_m365_file_auth,
+    _openai_compat_base_url,
     _resolve_prompt,
     _sandbox_env,
+    _setup_scene,
+    build_openclaw_eval_config,
+    qualify_openclaw_model,
 )
 
 
@@ -120,6 +128,42 @@ class TestSandboxEnv:
         env = _sandbox_env(config)
         
         assert "UNRESOLVED" not in env
+
+    def test_forwards_m365_from_allowlist(self, monkeypatch):
+        monkeypatch.setenv("M365_ACCESS_TOKEN", "tok-allowlist")
+        monkeypatch.setenv("M365_USER", "tbx-demo2@dev.mscloud.ibm.com")
+        monkeypatch.setenv("M365_TENANT_ID", "tenant-id")
+        monkeypatch.setenv("M365_CLIENT_ID", "client-id")
+        monkeypatch.setenv("M365_CLIENT_SECRET", "client-secret")
+
+        env = _sandbox_env(_mock_config())
+
+        assert env["M365_ACCESS_TOKEN"] == "tok-allowlist"
+        assert env["M365_USER"] == "tbx-demo2@dev.mscloud.ibm.com"
+        assert env["M365_TENANT_ID"] == "tenant-id"
+        assert env["M365_CLIENT_ID"] == "client-id"
+        assert env["M365_CLIENT_SECRET"] == "client-secret"
+        assert set(_M365_FORWARD_ENV) <= set(env)
+
+    def test_forwards_m365_from_execution_env(self, monkeypatch):
+        monkeypatch.setenv("M365_ACCESS_TOKEN", "tok-exec")
+        monkeypatch.setenv("M365_USER", "user@example.com")
+        monkeypatch.delenv("M365_TENANT_ID", raising=False)
+
+        config = _mock_config(
+            execution_env={
+                "M365_ACCESS_TOKEN": "$M365_ACCESS_TOKEN",
+                "M365_USER": "$M365_USER",
+                "M365_TENANT_ID": "$M365_TENANT_ID",
+                "FORGE_SOURCES": "m365-only",
+            }
+        )
+        env = _sandbox_env(config)
+
+        assert env["M365_ACCESS_TOKEN"] == "tok-exec"
+        assert env["M365_USER"] == "user@example.com"
+        assert "M365_TENANT_ID" not in env
+        assert env["FORGE_SOURCES"] == "m365-only"
 
 
 class TestResolvePrompt:
@@ -245,6 +289,72 @@ class TestRunCaseEnvForwarding:
         finally:
             os.environ.pop("ANTHROPIC_API_KEY", None)
 
+    def test_run_case_forwards_m365_into_exec_env(self, tmp_path, monkeypatch):
+        from agent_eval.openshell.run import _run_case
+        from agent_eval.openshell.sandbox import OpenShellSandbox
+        import asyncio
+
+        monkeypatch.setenv("M365_ACCESS_TOKEN", "tok-sandbox")
+        monkeypatch.setenv("M365_USER", "tbx-demo2@dev.mscloud.ibm.com")
+        monkeypatch.setenv("M365_TENANT_ID", "tenant")
+        monkeypatch.setenv("M365_CLIENT_ID", "client")
+        monkeypatch.setenv("M365_CLIENT_SECRET", "secret")
+
+        config = _mock_config(
+            prompt="brief me",
+            execution_env={
+                "M365_ACCESS_TOKEN": "$M365_ACCESS_TOKEN",
+                "M365_USER": "$M365_USER",
+                "M365_TENANT_ID": "$M365_TENANT_ID",
+                "M365_CLIENT_ID": "$M365_CLIENT_ID",
+                "M365_CLIENT_SECRET": "$M365_CLIENT_SECRET",
+                "FORGE_SOURCES": "m365-only",
+            },
+        )
+        config.runner.type = "openclaw"
+        config.runner.providers = None
+
+        staged_case = tmp_path / "cases" / "case-001"
+        staged_case.mkdir(parents=True)
+        (staged_case / "input.yaml").write_text(yaml.safe_dump({}))
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        sandbox = MagicMock(spec=OpenShellSandbox)
+        sandbox.create = AsyncMock()
+        sandbox.upload = AsyncMock()
+        sandbox.download = AsyncMock()
+        sandbox.delete = AsyncMock()
+        exec_result = MagicMock()
+        exec_result.stdout = json.dumps({"ok": True})
+        exec_result.stderr = ""
+        exec_result.return_code = 0
+        sandbox.exec = AsyncMock(return_value=exec_result)
+
+        async def run_test():
+            sem = asyncio.Semaphore(1)
+            await _run_case(
+                sandbox, config, staged_case, "model", "image:v1",
+                output_dir, sem, keep=False,
+            )
+
+        asyncio.run(run_test())
+
+        agent_calls = [
+            c for c in sandbox.exec.call_args_list
+            if c.kwargs.get("env") and c.kwargs["env"].get("M365_ACCESS_TOKEN")
+        ]
+        assert agent_calls, "sandbox.exec was not called with M365 tokens in env"
+        env = agent_calls[-1].kwargs["env"]
+        assert env["M365_ACCESS_TOKEN"] == "tok-sandbox"
+        assert env["M365_USER"] == "tbx-demo2@dev.mscloud.ibm.com"
+        assert env["M365_TENANT_ID"] == "tenant"
+        assert env["M365_CLIENT_ID"] == "client"
+        assert env["M365_CLIENT_SECRET"] == "secret"
+        assert env["M365_AUTH_HEADER_FILE"] == _M365_HEADER_PATH
+        assert env["M365_GRAPH_CURL"] == _M365_GRAPH_CURL_PATH
+        assert env["FORGE_SOURCES"] == "m365-only"
+
 
 class TestRunCasePromptResolution:
     """Tests verifying _run_case resolves prompt templates."""
@@ -293,6 +403,93 @@ class TestRunCasePromptResolution:
         assert b"Hello resolved" in stdin_data
 
 
+class TestInstallM365FileAuth:
+    """Graph header-file helpers installed inside the sandbox."""
+
+    def test_noop_without_token(self):
+        from agent_eval.openshell.sandbox import OpenShellSandbox
+        import asyncio
+
+        sandbox = MagicMock(spec=OpenShellSandbox)
+        sandbox.exec = AsyncMock()
+        env = {"M365_USER": "user@example.com"}
+
+        asyncio.run(_install_m365_file_auth(sandbox, "sbx", env))
+
+        sandbox.exec.assert_not_called()
+        assert "M365_AUTH_HEADER_FILE" not in env
+
+    def test_writes_header_and_wrapper(self):
+        from agent_eval.openshell.sandbox import OpenShellSandbox
+        import asyncio
+
+        sandbox = MagicMock(spec=OpenShellSandbox)
+        ok = MagicMock()
+        ok.return_code = 0
+        sandbox.exec = AsyncMock(return_value=ok)
+        env = {
+            "M365_ACCESS_TOKEN": "eyJ-test-token",
+            "M365_USER": "user@example.com",
+        }
+
+        asyncio.run(_install_m365_file_auth(sandbox, "sbx", env))
+
+        assert env["M365_AUTH_HEADER_FILE"] == _M365_HEADER_PATH
+        assert env["M365_GRAPH_CURL"] == _M365_GRAPH_CURL_PATH
+        commands = [call.args[1] for call in sandbox.exec.call_args_list]
+        assert ["tee", _M365_HEADER_PATH] in commands
+        header_call = next(
+            c for c in sandbox.exec.call_args_list if c.args[1][:2] == ["tee", _M365_HEADER_PATH]
+        )
+        assert b"Authorization: Bearer eyJ-test-token" in header_call.kwargs["stdin"]
+
+
+class TestSetupSceneM365:
+    """Scene YAML with m365.seed=external must not look like a failed Slack seed."""
+
+    def test_records_external_mailbox_and_skips_mocks(self, tmp_path, caplog, monkeypatch):
+        monkeypatch.delenv("M365_ACCESS_TOKEN", raising=False)
+        eval_yaml = tmp_path / "eval.yaml"
+        scenes = tmp_path / "scenes"
+        scenes.mkdir()
+        eval_yaml.write_text("scene: monday-acquisition\n", encoding="utf-8")
+        (scenes / "monday-acquisition.yaml").write_text(
+            "\n".join(
+                [
+                    "name: ibm-forge-monday-briefing-m365",
+                    "slack:",
+                    "  enabled: false",
+                    "m365:",
+                    "  user: tbx-demo2@dev.mscloud.ibm.com",
+                    "  seed: external",
+                    "crabline_seeds: []",
+                    "smolclaw_seeds: []",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        config = MagicMock()
+        config.config_path = eval_yaml
+        out = tmp_path / "run"
+        out.mkdir()
+
+        with caplog.at_level("INFO"):
+            assert _setup_scene(config, out) is True
+
+        meta = json.loads((out / "scene-seed.json").read_text(encoding="utf-8"))
+        assert meta["m365"]["seed"] == "external"
+        assert meta["m365"]["user"] == "tbx-demo2@dev.mscloud.ibm.com"
+        assert meta["m365"]["access_token"] == "missing"
+        assert meta["m365"]["slack_enabled"] is False
+        assert "crabline" not in meta
+        assert "smolclaw" not in meta
+        text = caplog.text
+        assert "m365=external (tbx-demo2@dev.mscloud.ibm.com)" in text
+        assert "slack=disabled" in text
+        assert "Scene seeded: 0 Slack" not in text
+
+
 def _mock_config(
     prompt=None,
     arguments=None,
@@ -305,8 +502,88 @@ def _mock_config(
     config.execution.arguments = arguments
     config.execution.timeout = 300
     config.execution.env = execution_env or {}
+    config.runner.type = "claude-code"
     config.runner.effort = None
     config.runner.settings = {}
     config.runner.env = runner_env or {}
+    config.runner.providers = None
     config.outputs = []
     return config
+
+
+class TestOpenclawEvalConfig:
+    """openclaw-eval.json must use LiteLLM/inference, not anthropic/claude-sonnet."""
+
+    _WXNB_PROVIDERS = {
+        "inference": {
+            "baseUrl": "https://inference.local/v1",
+            "apiKey": "empty",
+            "models": [
+                {"id": "claude-sonnet-4", "name": "Claude Sonnet 4", "api": "openai-completions"}
+            ],
+        }
+    }
+
+    def test_qualifies_litellm_alias_to_inference(self):
+        assert (
+            qualify_openclaw_model("claude-sonnet", self._WXNB_PROVIDERS)
+            == "inference/claude-sonnet"
+        )
+
+    def test_keeps_already_qualified_model(self):
+        assert (
+            qualify_openclaw_model("inference/claude-sonnet", self._WXNB_PROVIDERS)
+            == "inference/claude-sonnet"
+        )
+
+    def test_wxvnb_mismatch_adds_claude_sonnet_id(self):
+        cfg, qualified = build_openclaw_eval_config(
+            self._WXNB_PROVIDERS, "claude-sonnet"
+        )
+        assert qualified == "inference/claude-sonnet"
+        assert cfg["agents"]["defaults"]["model"]["primary"] == "inference/claude-sonnet"
+        assert "anthropic" not in cfg["models"]["providers"]
+        assert cfg["models"]["mode"] == "replace"
+        inf = cfg["models"]["providers"]["inference"]
+        ids = [m["id"] for m in inf["models"]]
+        assert "claude-sonnet" in ids
+        assert inf["api"] == "openai-completions"
+        assert inf["baseUrl"] == "https://inference.local/v1"
+
+    def test_cluster_litellm_provider(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "mock")
+        providers = {
+            "inference": {
+                "baseUrl": "http://litellm.ab-eval-flow.svc.cluster.local:4000/v1",
+                "api": "openai-completions",
+                "apiKey": "$ANTHROPIC_API_KEY",
+                "models": [{"id": "claude-sonnet", "name": "Claude Sonnet"}],
+            }
+        }
+        cfg, qualified = build_openclaw_eval_config(providers, "claude-sonnet")
+        inf = cfg["models"]["providers"]["inference"]
+        assert qualified == "inference/claude-sonnet"
+        assert inf["apiKey"] == "mock"
+        assert inf["baseUrl"].endswith("/v1")
+        assert inf["models"][0]["id"] == "claude-sonnet"
+
+    def test_appends_v1_to_litellm_base_without_path(self, monkeypatch):
+        monkeypatch.setenv(
+            "ANTHROPIC_BASE_URL", "http://litellm.ab-eval-flow.svc:4000"
+        )
+        providers = {
+            "inference": {
+                "baseUrl": "$ANTHROPIC_BASE_URL",
+                "apiKey": "empty",
+                "models": [{"id": "claude-sonnet"}],
+            }
+        }
+        cfg, _ = build_openclaw_eval_config(providers, "claude-sonnet")
+        assert (
+            cfg["models"]["providers"]["inference"]["baseUrl"]
+            == "http://litellm.ab-eval-flow.svc:4000/v1"
+        )
+
+    def test_openai_compat_base_url_idempotent(self):
+        assert _openai_compat_base_url("http://x:4000/v1") == "http://x:4000/v1"
+        assert _openai_compat_base_url("http://x:4000") == "http://x:4000/v1"

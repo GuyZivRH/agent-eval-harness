@@ -46,6 +46,16 @@ class TestOpenShellSandbox:
         text = path.read_text()
         assert "/opt/openclaw" in text
 
+    def test_bundled_eval_policy_allows_microsoft_graph(self):
+        path = bundled_eval_policy()
+        assert path is not None
+        text = path.read_text()
+        assert "graph.microsoft.com" in text
+        assert "login.microsoftonline.com" in text
+        assert "/usr/bin/curl" in text
+        assert "litellm.ab-eval-flow.svc.cluster.local" in text
+        assert "inference.local" in text
+
     def test_from_env_with_values(self, monkeypatch):
         monkeypatch.setenv("OPENSHELL_GATEWAY_ENDPOINT", "https://gateway.example.com:8080")
         monkeypatch.setenv("AGENT_EVAL_OPENSHELL_POLICY", "/path/to/policy.yaml")

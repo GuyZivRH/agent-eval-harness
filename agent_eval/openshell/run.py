@@ -45,6 +45,22 @@ SCRIPTS_DIR = Path(__file__).parents[2] / "skills" / "eval-run" / "scripts"
 _OPENCLAW_STATE_DIR = Path("/sandbox/.openclaw")
 _OPENCLAW_TMP_DIR = Path("/sandbox/tmp")
 
+# Graph tokens + mailbox identity. Also resolved from eval.yaml
+# ``execution.env: $M365_*``; listed here so they reach sandbox exec even
+# when a submission omits that block.
+_M365_FORWARD_ENV = (
+    "M365_ACCESS_TOKEN",
+    "M365_USER",
+    "M365_TENANT_ID",
+    "M365_CLIENT_ID",
+    "M365_CLIENT_SECRET",
+)
+
+# OpenClaw 8.1 redacts Bearer tokens in tool command text; Forge prompts use
+# curl -H @$M365_AUTH_HEADER_FILE instead of expanding the token on argv.
+_M365_HEADER_PATH = "/sandbox/tmp/m365.header"
+_M365_GRAPH_CURL_PATH = "/sandbox/tmp/m365-graph-curl"
+
 # Environment variables to forward to sandbox (mirrors Harbor's _FORWARD_ENV)
 _FORWARD_ENV = (
     # Provider config
@@ -57,7 +73,148 @@ _FORWARD_ENV = (
     "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
     "AWS_BEARER_TOKEN_BEDROCK",
     "OPENAI_API_KEY",
+    # Live Microsoft Graph (Forge Outlook + calendar; not Crabline/smolclaw)
+    *_M365_FORWARD_ENV,
 )
+
+# OpenClaw prefixes unqualified --model values as anthropic/<name> and then
+# probes api.anthropic.com. Custom eval.yaml providers must win instead.
+_ANTHROPIC_SANDBOX_ENV = (
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_VERTEX",
+    "ANTHROPIC_VERTEX_PROJECT_ID",
+)
+
+
+def _resolve_provider_value(raw, *env_keys: str) -> str:
+    """Resolve a provider field: literal, $ENV, or first non-empty env fallback."""
+    if isinstance(raw, str) and raw.startswith("$") and len(raw) > 1:
+        resolved = os.environ.get(raw[1:], "")
+        if resolved:
+            return resolved
+        raw = ""
+    if raw:
+        return str(raw)
+    for key in env_keys:
+        found = os.environ.get(key)
+        if found:
+            return found
+    return ""
+
+
+def _openai_compat_base_url(url: str) -> str:
+    """Ensure openai-completions baseUrl ends with /v1 (LiteLLM cluster URLs often omit it)."""
+    url = (url or "").rstrip("/")
+    if not url or url.endswith("/v1"):
+        return url
+    return url + "/v1"
+
+
+def qualify_openclaw_model(model: str, providers: dict) -> str:
+    """Return provider/id so OpenClaw does not default the model to anthropic/."""
+    model = (model or "").strip()
+    if not model or not providers:
+        return model
+    if "/" in model:
+        return model
+    for name, cfg in providers.items():
+        ids = [
+            m.get("id")
+            for m in (cfg or {}).get("models") or []
+            if isinstance(m, dict) and m.get("id")
+        ]
+        if model in ids:
+            return f"{name}/{model}"
+    first = next(iter(providers))
+    return f"{first}/{model}"
+
+
+def _openclaw_model_catalog_entry(model_id: str, name: str = "", api: str = "") -> dict:
+    entry = {
+        "id": model_id,
+        "name": name or model_id,
+        "reasoning": False,
+        "input": ["text"],
+        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+        "contextWindow": 200000,
+        "maxTokens": 8192,
+    }
+    if api:
+        entry["api"] = api
+    return entry
+
+
+def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
+    """Build /sandbox/openclaw-eval.json and the --model OpenClaw should receive.
+
+    Pipeline --model is often a LiteLLM alias (claude-sonnet). OpenClaw needs
+    that id listed under models.providers[<name>].models[] and a provider-
+    qualified --model, otherwise it looks up anthropic/claude-sonnet.
+    """
+    qualified = qualify_openclaw_model(model, providers)
+    requested_id = qualified.split("/", 1)[1] if "/" in qualified else qualified
+    provider_name = (
+        qualified.split("/", 1)[0] if "/" in qualified else next(iter(providers), "")
+    )
+    openclaw_config = {
+        "agents": {
+            "defaults": {
+                "model": {"primary": qualified},
+                "models": {qualified: {}},
+            }
+        },
+        "models": {
+            # Do not merge OpenClaw's built-in anthropic catalog (sandbox cannot
+            # reach api.anthropic.com; catalog fetch times out and pollutes logs).
+            "mode": "replace",
+            "providers": {},
+        },
+    }
+    for name, provider_cfg in providers.items():
+        provider_cfg = provider_cfg or {}
+        raw_base = provider_cfg.get("baseUrl", "")
+        base_url = _resolve_provider_value(
+            raw_base, "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"
+        )
+        if "inference.local" not in base_url:
+            base_url = _openai_compat_base_url(base_url)
+        api_key = (
+            _resolve_provider_value(
+                provider_cfg.get("apiKey", "empty"),
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+            )
+            or "empty"
+        )
+        api = provider_cfg.get("api", "openai-completions")
+        provider_entry = {
+            "baseUrl": base_url,
+            "apiKey": api_key,
+            "api": api,
+            "models": [],
+        }
+        seen = set()
+        for m in provider_cfg.get("models") or []:
+            if not isinstance(m, dict):
+                continue
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            seen.add(mid)
+            provider_entry["models"].append(
+                _openclaw_model_catalog_entry(
+                    mid, m.get("name", mid), m.get("api") or api
+                )
+            )
+        if name == provider_name and requested_id and requested_id not in seen:
+            provider_entry["models"].append(
+                _openclaw_model_catalog_entry(requested_id, requested_id, api)
+            )
+        openclaw_config["models"]["providers"][name] = provider_entry
+    return openclaw_config, qualified
 
 
 def _child_env(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
@@ -262,6 +419,69 @@ def _sandbox_env(config: EvalConfig) -> Dict[str, str]:
     return env
 
 
+async def _install_m365_file_auth(
+    sandbox: OpenShellSandbox,
+    name: str,
+    sandbox_env: Dict[str, str],
+) -> None:
+    """Install Graph header-file auth inside the sandbox (OpenClaw 8.1-safe).
+
+    Forge prompts tell the agent to call Graph with
+    ``curl -H @$M365_AUTH_HEADER_FILE`` (or ``$M365_GRAPH_CURL``). Expanding
+    ``M365_ACCESS_TOKEN`` on the tool command line is redacted to ``***``.
+    Tokens themselves are still passed in ``sandbox_env`` for MCP/CLI tools.
+    """
+    token = sandbox_env.get("M365_ACCESS_TOKEN")
+    if not token:
+        return
+
+    mkdir = await sandbox.exec(
+        name, ["mkdir", "-p", str(_OPENCLAW_TMP_DIR)],
+    )
+    if mkdir.return_code:
+        logger.warning(
+            "Could not create %s for M365 auth files (rc=%s)",
+            _OPENCLAW_TMP_DIR,
+            mkdir.return_code,
+        )
+        return
+
+    header = f"Authorization: Bearer {token}\n"
+    written = await sandbox.exec(
+        name,
+        ["tee", _M365_HEADER_PATH],
+        stdin=header.encode(),
+    )
+    if written.return_code:
+        logger.warning(
+            "Could not write M365 auth header in sandbox (rc=%s)",
+            written.return_code,
+        )
+        return
+
+    sandbox_env["M365_AUTH_HEADER_FILE"] = _M365_HEADER_PATH
+
+    wrapper = (
+        "#!/bin/sh\n"
+        f'exec curl -sS -H @"{_M365_HEADER_PATH}" "$@"\n'
+    )
+    curl_written = await sandbox.exec(
+        name,
+        ["tee", _M365_GRAPH_CURL_PATH],
+        stdin=wrapper.encode(),
+    )
+    if curl_written.return_code == 0:
+        await sandbox.exec(name, ["chmod", "+x", _M365_GRAPH_CURL_PATH])
+        sandbox_env["M365_GRAPH_CURL"] = _M365_GRAPH_CURL_PATH
+
+    present = [k for k in _M365_FORWARD_ENV if sandbox_env.get(k)]
+    logger.info(
+        "M365 file-auth installed in sandbox (%s, header=%s)",
+        ", ".join(present),
+        _M365_HEADER_PATH,
+    )
+
+
 def _resolve_prompt(config: EvalConfig, case_data: dict) -> str:
     """Resolve prompt template using Jinja2 or str.format().
 
@@ -320,7 +540,13 @@ def _load_scene(config: EvalConfig) -> Optional[dict]:
 
 
 def _setup_scene(config: EvalConfig, output_dir: Path) -> bool:
-    """Seed scene data into Crabline + smolclaw once. Return True if a scene was seeded."""
+    """Apply scene YAML once at run start.
+
+    Crabline seeds Slack-mock messages; smolclaw seeds Gmail/Calendar mocks.
+    Forge M365 scenes leave those lists empty (``seed: external``): the live
+    Graph mailbox is already populated and this function only records that
+    fact. Graph tokens are forwarded later via ``_sandbox_env``.
+    """
     scene = _load_scene(config)
     if not scene:
         return False
@@ -342,12 +568,52 @@ def _setup_scene(config: EvalConfig, output_dir: Path) -> bool:
         smolclaw_meta = seed_smolclaw_for_scene(smolclaw_seeds)
         all_meta["smolclaw"] = smolclaw_meta
 
-    # Persist scene seed metadata for debugging
+    m365 = scene.get("m365") or {}
+    slack = scene.get("slack") or {}
+    if m365:
+        seed_mode = str(m365.get("seed") or "")
+        token_present = bool(os.environ.get("M365_ACCESS_TOKEN"))
+        all_meta["m365"] = {
+            "user": m365.get("user"),
+            "seed": seed_mode,
+            "access_token": "present" if token_present else "missing",
+            "slack_enabled": bool(slack.get("enabled")),
+        }
+        if seed_mode == "external":
+            logger.info(
+                "M365 seed=external: mailbox is pre-seeded (user=%s); "
+                "not seeding Crabline/smolclaw — forwarding Graph tokens only",
+                m365.get("user") or "unset",
+            )
+            if not token_present:
+                logger.warning(
+                    "M365 seed=external but M365_ACCESS_TOKEN is not set "
+                    "on the orchestrator"
+                )
+        else:
+            logger.info(
+                "M365 scene seed=%s user=%s",
+                seed_mode or "unset",
+                m365.get("user") or "unset",
+            )
+
+    # Persist scene seed metadata for debugging (never write token values)
     (output_dir / "scene-seed.json").write_text(
         json.dumps(all_meta, indent=2, default=str), encoding="utf-8"
     )
-    logger.info("Scene seeded: %d Slack + %d Gmail/Calendar",
-                len(crabline_seeds), len(smolclaw_seeds))
+    slack_state = "enabled" if slack.get("enabled") else "disabled"
+    m365_state = "none"
+    if m365:
+        m365_state = str(m365.get("seed") or "configured")
+        if m365.get("user"):
+            m365_state = f"{m365_state} ({m365['user']})"
+    logger.info(
+        "Scene ready: slack=%s crabline=%d smolclaw=%d m365=%s",
+        slack_state,
+        len(crabline_seeds),
+        len(smolclaw_seeds),
+        m365_state,
+    )
     return True
 
 
@@ -707,9 +973,10 @@ async def _run_case(
                                 smol_meta["thread_id"]
                             )
 
-            # Build env to forward to sandbox (API keys + config env)
+            # Build env to forward to sandbox (API keys + config env + M365_*)
             sandbox_env = _sandbox_env(config)
             sandbox_env.update({k: v for k, v in sandbox_env_extra.items() if v})
+            await _install_m365_file_auth(sandbox, name, sandbox_env)
 
             # Build command based on runner type
             # Default depends on whether providers are configured (OpenClaw) or not (Claude Code)
@@ -758,6 +1025,7 @@ async def _run_case(
                 providers = getattr(config.runner, 'providers', None)
                 config_path = None
                 auth_env_only = True
+                openclaw_model = model
                 await sandbox.exec(
                     name,
                     [
@@ -771,48 +1039,24 @@ async def _run_case(
                 sandbox_env["OPENCLAW_STATE_DIR"] = str(_OPENCLAW_STATE_DIR)
                 sandbox_env["TMPDIR"] = str(_OPENCLAW_TMP_DIR)
                 if providers:
-                    openclaw_config: dict = {
-                        "agents": {
-                            "defaults": {
-                                "model": {"primary": model},
-                            }
-                        },
-                        "models": {
-                            "mode": "merge",
-                            "providers": {},
-                        },
-                    }
-                    for provider_name, provider_cfg in providers.items():
-                        provider_entry: dict = {
-                            "baseUrl": provider_cfg.get("baseUrl", ""),
-                            "apiKey": provider_cfg.get("apiKey", "empty"),
-                            "api": provider_cfg.get("api", "openai-completions"),
-                            "models": [],
-                        }
-                        for m in provider_cfg.get("models", []):
-                            model_entry = {
-                                "id": m.get("id", ""),
-                                "name": m.get("name", m.get("id", "")),
-                                "reasoning": False,
-                                "input": ["text"],
-                                "cost": {
-                                    "input": 0,
-                                    "output": 0,
-                                    "cacheRead": 0,
-                                    "cacheWrite": 0,
-                                },
-                                "contextWindow": 200000,
-                                "maxTokens": 8192,
-                            }
-                            if m.get("api"):
-                                model_entry["api"] = m["api"]
-                            provider_entry["models"].append(model_entry)
-                        openclaw_config["models"]["providers"][provider_name] = (
-                            provider_entry
-                        )
-
+                    openclaw_config, openclaw_model = build_openclaw_eval_config(
+                        providers, model
+                    )
+                    # Custom providers are openai-compatible (LiteLLM / inference.local).
+                    # Anthropic env makes OpenClaw discover api.anthropic.com.
+                    for key in _ANTHROPIC_SANDBOX_ENV:
+                        sandbox_env.pop(key, None)
                     config_path = Path("/sandbox/openclaw-eval.json")
                     config_json = json.dumps(openclaw_config)
+                    provider_names = list(
+                        openclaw_config["models"]["providers"].keys()
+                    )
+                    logger.info(
+                        "OpenClaw eval config path=%s model=%s providers=%s",
+                        config_path,
+                        openclaw_model,
+                        provider_names,
+                    )
                     # Quay OpenClaw image has node but not python3
                     await sandbox.exec(
                         name,
@@ -830,7 +1074,7 @@ async def _run_case(
                 # is deleted on exit). Same path as OPENCLAW_STATE_DIR under
                 # /sandbox (Landlock read_write). Needed for trajectory export.
                 cmd = build_openclaw_argv(
-                    model=model,
+                    model=openclaw_model,
                     timeout_s=config.execution.timeout,
                     effort=effort,
                     cwd=Path("/sandbox"),

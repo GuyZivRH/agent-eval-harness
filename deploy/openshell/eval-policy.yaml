@@ -82,6 +82,33 @@ network_policies:
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
+  # In-cluster LiteLLM (OpenClaw openai-completions; cluster Forge evals)
+  litellm_cluster:
+    name: litellm-cluster
+    endpoints:
+      - host: litellm.ab-eval-flow.svc.cluster.local
+        port: 4000
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  litellm_cluster_short:
+    name: litellm-cluster-short
+    endpoints:
+      - host: litellm.ab-eval-flow.svc
+        port: 4000
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
   # Host-side Crabline Slack mock (AEH OpenClaw channel eval)
   # Bind Crabline with: --host 0.0.0.0 --port 8787
   crabline_slack:
@@ -119,6 +146,25 @@ network_policies:
     endpoints:
       - host: host.openshell.internal
         port: 8002
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Live Microsoft Graph (Forge Outlook + calendar; scene m365.seed: external)
+  m365_graph:
+    name: microsoft-graph
+    endpoints:
+      - host: graph.microsoft.com
+        port: 443
+        protocol: rest
+        access: full
+      - host: login.microsoftonline.com
+        port: 443
         protocol: rest
         access: full
     binaries:
