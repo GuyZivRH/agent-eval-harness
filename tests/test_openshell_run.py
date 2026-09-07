@@ -14,7 +14,9 @@ from agent_eval.openshell.run import (
     _M365_GRAPH_CURL_PATH,
     _M365_HEADER_PATH,
     _child_env,
+    _ensure_m365_credentials,
     _install_m365_file_auth,
+    _m365_usable,
     _openai_compat_base_url,
     _resolve_prompt,
     _sandbox_env,
@@ -442,6 +444,88 @@ class TestInstallM365FileAuth:
             c for c in sandbox.exec.call_args_list if c.args[1][:2] == ["tee", _M365_HEADER_PATH]
         )
         assert b"Authorization: Bearer eyJ-test-token" in header_call.kwargs["stdin"]
+
+
+class TestEnsureM365Credentials:
+    """Forge Graph runs must fail closed when orchestrator M365_* is empty."""
+
+    def test_placeholder_not_usable(self):
+        assert _m365_usable(None) is False
+        assert _m365_usable("") is False
+        assert _m365_usable("<replace-with-graph-token>") is False
+        assert _m365_usable("eyJ-real-token") is True
+
+    def test_skips_when_no_m365_declared(self, monkeypatch):
+        monkeypatch.delenv("M365_ACCESS_TOKEN", raising=False)
+        config = _mock_config()
+        config.config_path = None
+        _ensure_m365_credentials(config)
+
+    def test_raises_when_execution_env_unresolved(self, monkeypatch):
+        monkeypatch.delenv("M365_ACCESS_TOKEN", raising=False)
+        monkeypatch.delenv("M365_USER", raising=False)
+        config = _mock_config(
+            execution_env={
+                "M365_ACCESS_TOKEN": "$M365_ACCESS_TOKEN",
+                "M365_USER": "$M365_USER",
+            }
+        )
+        config.config_path = None
+        with pytest.raises(RuntimeError, match="M365 Graph credentials"):
+            _ensure_m365_credentials(config)
+
+    def test_raises_on_placeholder_token(self, monkeypatch):
+        monkeypatch.setenv("M365_ACCESS_TOKEN", "<replace-with-graph-token>")
+        monkeypatch.setenv("M365_USER", "user@example.com")
+        config = _mock_config(
+            execution_env={"M365_ACCESS_TOKEN": "$M365_ACCESS_TOKEN"}
+        )
+        config.config_path = None
+        with pytest.raises(RuntimeError, match="placeholder"):
+            _ensure_m365_credentials(config)
+
+    def test_ok_when_token_and_user_set(self, monkeypatch):
+        monkeypatch.setenv("M365_ACCESS_TOKEN", "tok-live")
+        monkeypatch.setenv("M365_USER", "user@example.com")
+        config = _mock_config(
+            execution_env={
+                "M365_ACCESS_TOKEN": "$M365_ACCESS_TOKEN",
+                "M365_USER": "$M365_USER",
+            }
+        )
+        config.config_path = None
+        _ensure_m365_credentials(config)
+
+    def test_scene_user_fills_m365_user(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("M365_ACCESS_TOKEN", "tok-live")
+        monkeypatch.delenv("M365_USER", raising=False)
+        eval_yaml = tmp_path / "eval.yaml"
+        scenes = tmp_path / "scenes"
+        scenes.mkdir()
+        eval_yaml.write_text("scene: monday-acquisition\n", encoding="utf-8")
+        (scenes / "monday-acquisition.yaml").write_text(
+            "m365:\n  user: tbx-demo2@dev.mscloud.ibm.com\n  seed: external\n",
+            encoding="utf-8",
+        )
+        config = _mock_config()
+        config.config_path = eval_yaml
+        _ensure_m365_credentials(config)
+        assert os.environ["M365_USER"] == "tbx-demo2@dev.mscloud.ibm.com"
+
+    def test_external_scene_requires_token(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("M365_ACCESS_TOKEN", raising=False)
+        eval_yaml = tmp_path / "eval.yaml"
+        scenes = tmp_path / "scenes"
+        scenes.mkdir()
+        eval_yaml.write_text("scene: monday-acquisition\n", encoding="utf-8")
+        (scenes / "monday-acquisition.yaml").write_text(
+            "m365:\n  user: tbx-demo2@dev.mscloud.ibm.com\n  seed: external\n",
+            encoding="utf-8",
+        )
+        config = _mock_config()
+        config.config_path = eval_yaml
+        with pytest.raises(RuntimeError, match="M365_ACCESS_TOKEN"):
+            _ensure_m365_credentials(config)
 
 
 class TestSetupSceneM365:

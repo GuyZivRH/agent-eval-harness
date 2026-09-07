@@ -60,6 +60,78 @@ _M365_FORWARD_ENV = (
 # curl -H @$M365_AUTH_HEADER_FILE instead of expanding the token on argv.
 _M365_HEADER_PATH = "/sandbox/tmp/m365.header"
 _M365_GRAPH_CURL_PATH = "/sandbox/tmp/m365-graph-curl"
+_M365_PLACEHOLDER_MARKERS = (
+    "<replace-with",
+    "changeme",
+    "placeholder",
+)
+
+
+def _m365_usable(value: Optional[str]) -> bool:
+    """True when an M365 env value is present and not a template placeholder."""
+    if value is None:
+        return False
+    text = str(value).strip()
+    if not text:
+        return False
+    low = text.lower()
+    return not any(marker in low for marker in _M365_PLACEHOLDER_MARKERS)
+
+
+def _apply_scene_m365_user(config: EvalConfig) -> None:
+    """Fill M365_USER from scene YAML when the orchestrator env omitted it."""
+    scene = _load_scene(config)
+    user = ((scene or {}).get("m365") or {}).get("user")
+    if user and not _m365_usable(os.environ.get("M365_USER")):
+        os.environ["M365_USER"] = str(user)
+
+
+def _m365_required_keys(config: EvalConfig) -> List[str]:
+    """Keys that must be set for live Graph (Forge) runs.
+
+    Required when eval.yaml declares ``execution.env`` ``M365_*`` and/or the
+    scene uses ``m365.seed: external``. Crabline/smolclaw scenes skip this.
+    """
+    needed: List[str] = []
+    env = getattr(config.execution, "env", None) or {}
+    if any(str(key).startswith("M365_") for key in env):
+        needed.extend(["M365_ACCESS_TOKEN", "M365_USER"])
+    scene = _load_scene(config)
+    m365 = (scene or {}).get("m365") or {}
+    if str(m365.get("seed") or "") == "external":
+        for key in ("M365_ACCESS_TOKEN", "M365_USER"):
+            if key not in needed:
+                needed.append(key)
+    return needed
+
+
+def _ensure_m365_credentials(config: EvalConfig) -> None:
+    """Fail before sandbox exec when Forge Graph credentials are missing.
+
+    ``M365_AUTH_HEADER_FILE`` / ``M365_GRAPH_CURL`` are created inside the
+    sandbox from ``M365_ACCESS_TOKEN``; they are not Secret keys.
+    """
+    _apply_scene_m365_user(config)
+    needed = _m365_required_keys(config)
+    if not needed:
+        return
+    missing = [key for key in needed if not _m365_usable(os.environ.get(key))]
+    if not missing:
+        logger.info(
+            "M365 Graph credentials present (%s)",
+            ", ".join(needed),
+        )
+        return
+    raise RuntimeError(
+        "M365 Graph credentials are not available on the orchestrator "
+        f"(missing or placeholder: {', '.join(missing)}). "
+        "Forge scenes with m365.seed=external need a live token so the "
+        "sandbox can install M365_AUTH_HEADER_FILE / M365_GRAPH_CURL. "
+        "On cluster: create Secret openshell-credentials in the PipelineRun "
+        "namespace with M365_ACCESS_TOKEN and M365_USER (optional: "
+        "M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET). "
+        "Do not apply the placeholder template. Locally: export the same keys."
+    )
 
 # Environment variables to forward to sandbox (mirrors Harbor's _FORWARD_ENV)
 _FORWARD_ENV = (
@@ -586,6 +658,8 @@ def _setup_scene(config: EvalConfig, output_dir: Path) -> bool:
                 m365.get("user") or "unset",
             )
             if not token_present:
+                # _ensure_m365_credentials raises before cases run; keep the
+                # metadata file so operators can see access_token=missing.
                 logger.warning(
                     "M365 seed=external but M365_ACCESS_TOKEN is not set "
                     "on the orchestrator"
@@ -704,7 +778,10 @@ async def run_openshell(
     case_dirs = sorted((workspace_root / "cases").iterdir())
     start_time = time.monotonic()
 
-    # Scene seeding — seed once before all cases
+    # Scene seeding — seed once before all cases. Fail closed when the
+    # submission needs live Graph but M365_* is unset (otherwise OpenClaw
+    # refuses and judges score 1/5 with an empty briefing).
+    _ensure_m365_credentials(config)
     scene_active = _setup_scene(config, output_dir)
 
     # 2. Run cases in sandboxes (parallel, with error isolation)
