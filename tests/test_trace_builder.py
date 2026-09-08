@@ -594,3 +594,110 @@ class TestBuildTrace:
         assert "Writing file A" not in (out_b.get("text") or "")
         assert out_c.get("text") == "Done."
         assert "Writing file A" not in (out_c.get("text") or "")
+
+
+_AEH_FLAT_EVENTS = [
+    {
+        "type": "user",
+        "text": "Read live mail and brief me.",
+        "timestamp": "2026-09-08T07:00:00.000Z",
+    },
+    {
+        "type": "assistant",
+        "text": "Calling Graph.",
+        "tools": [{
+            "id": "tu_exec_1",
+            "name": "exec",
+            "input": {"command": "curl graph.microsoft.com/v1.0/me/messages"},
+        }],
+        "timestamp": "2026-09-08T07:00:01.000Z",
+    },
+    {
+        "type": "tool_result",
+        "tool_use_id": "tu_exec_1",
+        "tool_name": "exec",
+        "result": '{"value": []}',
+        "is_error": False,
+        "timestamp": "2026-09-08T07:00:02.000Z",
+    },
+    {
+        "type": "assistant",
+        "text": "No new mail.",
+        "tools": [],
+        "timestamp": "2026-09-08T07:00:03.000Z",
+    },
+]
+
+
+class TestAehEventsToStream:
+    def test_converts_user_tool_and_assistant(self):
+        from agent_eval.mlflow.trace_builder import aeh_events_to_stream_events
+
+        stream = aeh_events_to_stream_events(_AEH_FLAT_EVENTS)
+        assert [e["type"] for e in stream] == [
+            "user", "assistant", "user", "assistant",
+        ]
+        assert stream[0]["message"]["content"] == "Read live mail and brief me."
+        tool = stream[1]["message"]["content"][1]
+        assert tool["type"] == "tool_use"
+        assert tool["name"] == "exec"
+        result = stream[2]["message"]["content"][0]
+        assert result["type"] == "tool_result"
+        assert result["tool_use_id"] == "tu_exec_1"
+
+    def test_build_trace_from_stream_events_has_tool_spans(self):
+        from agent_eval.mlflow.trace_builder import (
+            aeh_events_to_stream_events,
+            build_trace,
+        )
+
+        stream = aeh_events_to_stream_events(_AEH_FLAT_EVENTS)
+        trace = build_trace(
+            None,
+            {"duration_s": 5.0, "model": "claude-sonnet",
+             "token_usage": {"input": 10, "output": 5}},
+            run_id="morning-briefing",
+            experiment_id="exp-001",
+            trace_name="openshell (morning-briefing)",
+            stream_events=stream,
+        )
+        assert trace is not None
+        spans = trace["data"]["spans"]
+        tool_names = [
+            s["name"] for s in spans if _get_span_type(s) == "TOOL"
+        ]
+        assert any("exec" in n for n in tool_names)
+
+    def test_openclaw_envelope_stdout_is_not_stream_json(self, tmp_path):
+        """OpenClaw agent-exec envelope is pretty-printed JSON, not NDJSON."""
+        stdout = tmp_path / "stdout.log"
+        stdout.write_text(json.dumps({
+            "ok": True,
+            "status": "ok",
+            "final": "briefing",
+            "sessionId": "abc",
+        }, indent=2))
+        assert build_trace(stdout, _basic_run_result(),
+                            run_id="x", experiment_id="e") is None
+
+    def test_load_openshell_prefers_events_json(self, tmp_path):
+        from agent_eval.mlflow.trace_builder import load_openshell_stream_events
+
+        case_dir = tmp_path / "morning-briefing"
+        case_dir.mkdir()
+        (case_dir / "stdout.log").write_text(
+            json.dumps({"ok": True, "final": "briefing"}, indent=2)
+        )
+        (case_dir / "events.json").write_text(json.dumps(_AEH_FLAT_EVENTS))
+        stream = load_openshell_stream_events(case_dir)
+        assert stream is not None
+        assert stream[0]["type"] == "user"
+        assert stream[1]["message"]["content"][1]["name"] == "exec"
+
+    def test_load_openshell_missing_artifacts_returns_none(self, tmp_path):
+        from agent_eval.mlflow.trace_builder import load_openshell_stream_events
+
+        case_dir = tmp_path / "empty"
+        case_dir.mkdir()
+        (case_dir / "stdout.log").write_text('{"ok": true, "final": ""}')
+        assert load_openshell_stream_events(case_dir) is None

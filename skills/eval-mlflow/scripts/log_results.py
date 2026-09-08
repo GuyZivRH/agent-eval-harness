@@ -40,7 +40,11 @@ from agent_eval.mlflow.experiment import resolve_tracking_uri
 
 
 # ── Trace builder (extracted to agent_eval/mlflow/trace_builder.py) ──
-from agent_eval.mlflow.trace_builder import build_trace, log_trace
+from agent_eval.mlflow.trace_builder import (
+    build_trace,
+    load_openshell_stream_events,
+    log_trace,
+)
 # Same transcript metric extractor the run-level aggregation uses, so per-step
 # trace cost/tokens match the run `cost_usd` metric and the HTML report.
 from agent_eval.harbor.results import _extract_transcript_metrics
@@ -428,24 +432,44 @@ def main():
     except Exception as e:
         print(f"WARNING: failed to search traces: {e}", file=sys.stderr)
 
-    # Build synthetic traces from stdout.log for cases not already covered
-    # by existing execution traces.
+    # Build synthetic traces from stdout.log (Claude) or events.json (OpenShell)
+    # for cases not already covered by existing execution traces.
     exec_mode = run_result.get("execution_mode", "batch")
-    if exec_mode in ("case", "prompt"):
+    if exec_mode in ("case", "prompt", "openshell"):
         cases_dir = run_dir / "cases"
         if cases_dir.exists():
             for case_dir in sorted(d for d in cases_dir.iterdir() if d.is_dir()):
-                case_stdout = case_dir / "stdout.log"
-                if not case_stdout.exists():
-                    continue
                 case_id = case_dir.name
                 if case_id in case_trace_map:
                     continue
                 case_result = run_result.get("per_case", {}).get(case_id, run_result)
                 _skill = _resolve_skill(config)
                 trace_name = f"{_skill} ({case_id})" if _skill else case_id
-                trace_dict = build_trace(case_stdout, case_result, case_id,
-                                         experiment_id, trace_name=trace_name)
+                if exec_mode == "openshell":
+                    stream = load_openshell_stream_events(case_dir)
+                    if not stream:
+                        print(
+                            f"WARNING: no OpenShell events for {case_id}; "
+                            "skipping trace (need events.json or "
+                            "openclaw-trajectory-events.jsonl)",
+                            file=sys.stderr,
+                        )
+                        continue
+                    trace_dict = build_trace(
+                        case_dir / "stdout.log",
+                        case_result,
+                        case_id,
+                        experiment_id,
+                        trace_name=trace_name,
+                        stream_events=stream,
+                    )
+                else:
+                    case_stdout = case_dir / "stdout.log"
+                    if not case_stdout.exists():
+                        continue
+                    trace_dict = build_trace(
+                        case_stdout, case_result, case_id,
+                        experiment_id, trace_name=trace_name)
                 if trace_dict:
                     tid = log_trace(trace_dict)
                     if tid:
@@ -453,6 +477,12 @@ def main():
                         trace_ids.append(tid)
                         num_spans = len(trace_dict["data"]["spans"])
                         print(f"TRACE: {tid} ({num_spans} spans) — {case_id}")
+            if exec_mode == "openshell" and not case_trace_map:
+                print(
+                    "WARNING: OpenShell produced no MLflow traces "
+                    "(cases/*/events.json missing or empty)",
+                    file=sys.stderr,
+                )
     elif exec_mode == "harbor":
         # Harbor runs in-pod and writes no cases/<id>/stdout.log; the Claude
         # stream-json lives per step in the harbor job dir. Build one trace per
