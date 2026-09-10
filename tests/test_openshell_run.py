@@ -288,6 +288,11 @@ class TestRunCaseEnvForwarding:
             call_kwargs = sandbox.exec.call_args[1]
             assert "env" in call_kwargs
             assert call_kwargs["env"]["ANTHROPIC_API_KEY"] == "test-api-key"
+            sandbox.upload.assert_awaited_once_with(
+                sandbox.create.call_args.args[0],
+                staged_case / "input.yaml",
+                "/sandbox/input.yaml",
+            )
         finally:
             os.environ.pop("ANTHROPIC_API_KEY", None)
 
