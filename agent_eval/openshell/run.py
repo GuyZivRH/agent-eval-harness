@@ -13,6 +13,7 @@ import importlib.util
 import json
 import logging
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -984,6 +985,38 @@ async def _run_case(
             for entry in sorted(staged_case.iterdir(), key=lambda path: path.name):
                 await sandbox.upload(name, entry, f"/sandbox/{entry.name}")
 
+            # Verify the files that were staged are actually visible inside the
+            # sandbox before invoking the agent.  OpenShell uploads and
+            # OpenClaw's workspace are separate layers; a successful upload
+            # request alone does not prove that the agent can read the file.
+            required_workspace_files = [
+                ("AGENTS.md", "/sandbox/AGENTS.md"),
+                ("skills/daily-briefing/SKILL.md", "/sandbox/skills/daily-briefing/SKILL.md"),
+                ("skills/microsoft365/SKILL.md", "/sandbox/skills/microsoft365/SKILL.md"),
+            ]
+            staged_names = {
+                str(path.relative_to(staged_case))
+                for path in staged_case.rglob("*")
+                if path.is_file()
+            }
+            for relative_path, sandbox_path in required_workspace_files:
+                if relative_path not in staged_names:
+                    continue
+                probe = await sandbox.exec(
+                    name,
+                    ["sh", "-c", f"test -s {shlex.quote(sandbox_path)}"],
+                )
+                if probe.return_code != 0:
+                    raise RuntimeError(
+                        f"Workspace preflight failed for {case_id}: "
+                        f"{sandbox_path} is not readable inside the sandbox"
+                    )
+            if any(path in staged_names for path, _ in required_workspace_files):
+                logger.info(
+                    "Workspace preflight passed for %s: AGENTS.md and staged skill files are readable",
+                    case_id,
+                )
+
             input_yaml_path = staged_case / "input.yaml"
             if input_yaml_path.exists():
                 input_yaml = yaml.safe_load(input_yaml_path.read_text()) or {}
@@ -992,6 +1025,11 @@ async def _run_case(
 
             # Resolve prompt template (Jinja2 or str.format)
             prompt = _resolve_prompt(config, input_yaml)
+            # Older Forge prompts used the host-side placeholder literally.
+            # OpenClaw does not expand it in read-tool arguments; normalize it
+            # at the harness boundary while retaining support for those cases.
+            prompt = prompt.replace("$WORKSPACE_DIR", "/sandbox")
+            prompt = prompt.replace("${WORKSPACE_DIR}", "/sandbox")
             system_prompt = getattr(config.runner, "system_prompt", None)
             if system_prompt and str(system_prompt).strip():
                 # OpenClaw agent exec has no --append-system-prompt; prepend.
