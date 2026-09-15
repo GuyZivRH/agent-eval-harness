@@ -116,6 +116,14 @@ def _ensure_m365_credentials(config: EvalConfig) -> None:
     needed = _m365_required_keys(config)
     if not needed:
         return
+    saw_profile = os.environ.get("FORGE_SAW_PROFILE", "").strip()
+    if saw_profile:
+        logger.info(
+            "M365 access delegated to SAW profile %s; no Graph token is required "
+            "on the orchestrator",
+            saw_profile,
+        )
+        return
     missing = [key for key in needed if not _m365_usable(os.environ.get(key))]
     if not missing:
         logger.info(
