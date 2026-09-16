@@ -187,7 +187,7 @@ class TestForgeAiGatewayCa:
         asyncio.run(_stage_forge_ai_gateway_ca(sandbox, "case-001", env))
 
         sandbox.upload.assert_awaited_once_with(
-            "case-001", source, "/sandbox/.forge/ai-gateway-ca.crt"
+            "case-001", source, "/sandbox/.forge"
         )
         assert env["NODE_EXTRA_CA_CERTS"] == "/sandbox/.forge/ai-gateway-ca.crt"
 

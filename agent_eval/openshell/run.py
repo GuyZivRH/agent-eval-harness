@@ -538,7 +538,10 @@ async def _stage_forge_ai_gateway_ca(
     mkdir = await sandbox.exec(name, ["mkdir", "-p", parent])
     if mkdir.return_code:
         raise RuntimeError(f"Could not create Forge CA directory in sandbox {name}")
-    await sandbox.upload(name, source, str(_FORGE_AI_GATEWAY_CA_PATH))
+    # OpenShell treats the remote upload argument as a destination directory,
+    # matching the workspace upload behavior.  Pass the parent directory so
+    # the source basename lands at the path used by NODE_EXTRA_CA_CERTS.
+    await sandbox.upload(name, source, str(_FORGE_AI_GATEWAY_CA_PATH.parent))
     # OpenClaw images do not necessarily ship a standalone ``test`` binary;
     # the previous probe therefore reported a successful upload as missing.
     # ``ls`` is part of the minimal image and verifies that the remote path
