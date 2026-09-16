@@ -123,14 +123,16 @@ network_policies:
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
-  # SAW's governed AI provider is a VM-local TLS bridge.  Sandboxes cannot
-  # resolve Kubernetes Service DNS, and the provider injects its capability
-  # bearer only for this supported bridge endpoint.
+  # Namespace-local Forge AI gateway used by the OpenClaw model provider.
   forge_ai_gateway:
     name: forge-ai-gateway
     endpoints:
       - host: host.containers.internal
         port: 18084
+        protocol: rest
+        access: full
+      - host: forge-ai-gateway.gz-forge-eval.svc.cluster.local
+        port: 18486
         protocol: rest
         access: full
     binaries:
