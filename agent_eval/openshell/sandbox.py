@@ -81,6 +81,8 @@ class OpenShellSandbox:
 
         Environment variables:
             OPENSHELL_GATEWAY_ENDPOINT: Gateway URL (default: https://127.0.0.1:17670)
+            OPENSHELL_GATEWAY_NAME: Optional registered gateway profile. When set,
+                use the profile so the CLI loads its OIDC and mTLS credentials.
             AGENT_EVAL_OPENSHELL_POLICY: Path to policy YAML. When unset, uses
                 ``deploy/openshell/eval-policy.yaml`` so Quay OpenClaw under
                 ``/opt/openclaw`` is readable (otherwise ``openclaw`` exits 126).
@@ -105,7 +107,16 @@ class OpenShellSandbox:
         )
 
     def _base_cmd(self) -> List[str]:
-        """Base command with gateway endpoint."""
+        """Base command selecting the configured gateway profile or endpoint.
+
+        A direct ``--gateway-endpoint`` bypasses the CLI gateway profile. That
+        also bypasses the profile's mTLS bundle, which is required when the
+        remote gateway requests a client certificate. Prefer the named profile
+        in CI when one was registered; keep endpoint mode for local/default use.
+        """
+        gateway_name = os.environ.get("OPENSHELL_GATEWAY_NAME", "").strip()
+        if gateway_name:
+            return ["openshell", "-g", gateway_name]
         return ["openshell", "--gateway-endpoint", self.gateway]
 
     async def create(self, name: str, image: str) -> str:
