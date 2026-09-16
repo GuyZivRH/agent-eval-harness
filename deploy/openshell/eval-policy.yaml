@@ -117,14 +117,14 @@ network_policies:
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
-  # SAW's in-cluster inference gateway. Evaluation sandboxes use this direct
-  # Service path because ephemeral sandboxes do not run the Chief-of-Staff
-  # host.containers.internal tunnel startup script.
+  # SAW's governed AI provider is a VM-local TLS bridge.  Sandboxes cannot
+  # resolve Kubernetes Service DNS, and the provider injects its capability
+  # bearer only for this supported bridge endpoint.
   forge_ai_gateway:
     name: forge-ai-gateway
     endpoints:
-      - host: forge-ai-gateway.saw-cchase.svc.cluster.local
-        port: 18486
+      - host: host.containers.internal
+        port: 18084
         protocol: rest
         access: full
     binaries:
