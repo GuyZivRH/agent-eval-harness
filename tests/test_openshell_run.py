@@ -656,6 +656,20 @@ class TestOpenclawEvalConfig:
         assert inf["baseUrl"].endswith("/v1")
         assert inf["models"][0]["id"] == "claude-sonnet"
 
+    def test_preserves_private_network_provider_opt_in(self):
+        providers = {
+            "forge-ai-gateway": {
+                "baseUrl": "https://host.containers.internal:18084/v1",
+                "apiKey": "openshell:placeholder",
+                "request": {"allowPrivateNetwork": True},
+                "models": [{"id": "rits/zai-org/glm-5-3"}],
+            }
+        }
+        cfg, _ = build_openclaw_eval_config(providers, "rits/zai-org/glm-5-3")
+        assert cfg["models"]["providers"]["forge-ai-gateway"]["request"] == {
+            "allowPrivateNetwork": True
+        }
+
     def test_appends_v1_to_litellm_base_without_path(self, monkeypatch):
         monkeypatch.setenv(
             "ANTHROPIC_BASE_URL", "http://litellm.ab-eval-flow.svc:4000"

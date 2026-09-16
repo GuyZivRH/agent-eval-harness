@@ -282,6 +282,16 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
             "api": api,
             "models": [],
         }
+        # OpenClaw intentionally rejects private/special-use destinations
+        # unless the provider explicitly opts in.  SAW's governed bridges are
+        # exactly such destinations (host.containers.internal), so preserve
+        # this schema-supported per-provider override when supplied by eval
+        # configuration.  Do not make it a global default.
+        request = provider_cfg.get("request")
+        if isinstance(request, dict) and "allowPrivateNetwork" in request:
+            provider_entry["request"] = {
+                "allowPrivateNetwork": request["allowPrivateNetwork"],
+            }
         seen = set()
         for m in provider_cfg.get("models") or []:
             if not isinstance(m, dict):
