@@ -1,0 +1,30 @@
+id: forge-ai-gateway-local
+display_name: Namespace Forge AI gateway
+description: Agent egress to the namespace-local Forge inference gateway
+category: other
+credentials:
+  - name: FORGE_AI_GATEWAY_BEARER
+    description: Bearer accepted by the namespace Forge gateway
+    env_vars:
+      - FORGE_AI_GATEWAY_BEARER
+    required: true
+    auth_style: bearer
+    header_name: authorization
+    query_param: ""
+    refresh:
+      strategy: static
+endpoints:
+  - host: forge-ai-gateway.gz-forge-eval.svc.cluster.local
+    port: 18486
+    protocol: rest
+    access: read-write
+    enforcement: enforce
+binaries:
+  - /usr/bin/node
+  - /usr/bin/node-22
+  - /usr/local/bin/openclaw
+  - /opt/openclaw/node_modules/openclaw/openclaw.mjs
+inference_capable: true
+discovery:
+  credentials:
+    - FORGE_AI_GATEWAY_BEARER
