@@ -189,7 +189,7 @@ class TestForgeAiGatewayCa:
         sandbox.upload.assert_awaited_once_with(
             "case-001", source, "/sandbox/.forge"
         )
-        assert env["NODE_EXTRA_CA_CERTS"] == "/sandbox/.forge/ai-gateway-ca.crt"
+        assert env["NODE_EXTRA_CA_CERTS"] == "/sandbox/.forge/ca.crt"
 
 
 class TestResolvePrompt:
