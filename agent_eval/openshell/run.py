@@ -539,7 +539,11 @@ async def _stage_forge_ai_gateway_ca(
     if mkdir.return_code:
         raise RuntimeError(f"Could not create Forge CA directory in sandbox {name}")
     await sandbox.upload(name, source, str(_FORGE_AI_GATEWAY_CA_PATH))
-    probe = await sandbox.exec(name, ["test", "-s", str(_FORGE_AI_GATEWAY_CA_PATH)])
+    # OpenClaw images do not necessarily ship a standalone ``test`` binary;
+    # the previous probe therefore reported a successful upload as missing.
+    # ``ls`` is part of the minimal image and verifies that the remote path
+    # exists without depending on a shell builtin.
+    probe = await sandbox.exec(name, ["ls", "-l", str(_FORGE_AI_GATEWAY_CA_PATH)])
     if probe.return_code:
         raise RuntimeError(f"Forge AI gateway CA was not staged in sandbox {name}")
     sandbox_env["NODE_EXTRA_CA_CERTS"] = str(_FORGE_AI_GATEWAY_CA_PATH)
