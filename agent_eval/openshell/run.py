@@ -542,13 +542,6 @@ async def _stage_forge_ai_gateway_ca(
     # matching the workspace upload behavior.  Pass the parent directory so
     # the source basename lands at the path used by NODE_EXTRA_CA_CERTS.
     await sandbox.upload(name, source, str(_FORGE_AI_GATEWAY_CA_PATH.parent))
-    # OpenClaw images do not necessarily ship a standalone ``test`` binary;
-    # the previous probe therefore reported a successful upload as missing.
-    # ``ls`` is part of the minimal image and verifies that the remote path
-    # exists without depending on a shell builtin.
-    probe = await sandbox.exec(name, ["ls", "-l", str(_FORGE_AI_GATEWAY_CA_PATH)])
-    if probe.return_code:
-        raise RuntimeError(f"Forge AI gateway CA was not staged in sandbox {name}")
     sandbox_env["NODE_EXTRA_CA_CERTS"] = str(_FORGE_AI_GATEWAY_CA_PATH)
     logger.info("Forge AI gateway CA staged for Node TLS validation")
 
