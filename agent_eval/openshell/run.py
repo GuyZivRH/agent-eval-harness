@@ -170,12 +170,16 @@ _ANTHROPIC_SANDBOX_ENV = (
 )
 
 
-def _resolve_provider_value(raw, *env_keys: str) -> str:
+def _resolve_provider_value(
+    raw, *env_keys: str, preserve_unresolved_env: bool = False
+) -> str:
     """Resolve a provider field: literal, $ENV, or first non-empty env fallback."""
     if isinstance(raw, str) and raw.startswith("$") and len(raw) > 1:
         resolved = os.environ.get(raw[1:], "")
         if resolved:
             return resolved
+        if preserve_unresolved_env:
+            return raw
         raw = ""
     if raw:
         return str(raw)
@@ -267,6 +271,7 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
                 provider_cfg.get("apiKey", "empty"),
                 "OPENAI_API_KEY",
                 "ANTHROPIC_API_KEY",
+                preserve_unresolved_env=True,
             )
             or "empty"
         )
@@ -1199,6 +1204,25 @@ async def _run_case(
                         name,
                         ["tee", str(config_path)],
                         stdin=config_json.encode(),
+                    )
+                    # SAW providers inject their bearer only into the sandbox.
+                    # Resolve a deferred "$VARNAME" API key there, without ever
+                    # exposing it to the orchestration pod or its logs.
+                    await sandbox.exec(
+                        name,
+                        [
+                            "node",
+                            "-e",
+                            "const fs=require('fs');"
+                            "const p='/sandbox/openclaw-eval.json';"
+                            "const c=JSON.parse(fs.readFileSync(p,'utf8'));"
+                            "for(const v of Object.values(c.models.providers)){"
+                            "if(typeof v.apiKey==='string'&&/^\\$[A-Za-z_][A-Za-z0-9_]*$/.test(v.apiKey)){"
+                            "const key=v.apiKey.slice(1),value=process.env[key];"
+                            "if(!value)throw new Error('missing sandbox provider credential: '+key);"
+                            "v.apiKey=value;}}"
+                            "fs.writeFileSync(p,JSON.stringify(c));",
+                        ],
                     )
                     sandbox_env["OPENCLAW_CONFIG_PATH"] = str(config_path)
                     auth_env_only = False
