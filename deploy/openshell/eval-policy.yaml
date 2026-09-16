@@ -117,6 +117,21 @@ network_policies:
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
+  # SAW's in-cluster inference gateway. Evaluation sandboxes use this direct
+  # Service path because ephemeral sandboxes do not run the Chief-of-Staff
+  # host.containers.internal tunnel startup script.
+  forge_ai_gateway:
+    name: forge-ai-gateway
+    endpoints:
+      - host: forge-ai-gateway.saw-cchase.svc.cluster.local
+        port: 18486
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
   # Host-side Crabline Slack mock (AEH OpenClaw channel eval)
   # Bind Crabline with: --host 0.0.0.0 --port 8787
   crabline_slack:
