@@ -653,11 +653,18 @@ def _setup_scene(config: EvalConfig, output_dir: Path) -> bool:
     slack = scene.get("slack") or {}
     if m365:
         seed_mode = str(m365.get("seed") or "")
-        token_present = bool(os.environ.get("M365_ACCESS_TOKEN"))
+        # SAW-delegated runs intentionally do not expose a Graph bearer token
+        # to the orchestrator; the sandbox receives governed access through
+        # the selected SAW profile instead.
+        saw_profile = os.environ.get("FORGE_SAW_PROFILE", "").strip()
+        token_present = bool(os.environ.get("M365_ACCESS_TOKEN")) or bool(saw_profile)
         all_meta["m365"] = {
             "user": m365.get("user"),
             "seed": seed_mode,
-            "access_token": "present" if token_present else "missing",
+            "access_token": (
+                "delegated" if saw_profile and not os.environ.get("M365_ACCESS_TOKEN")
+                else "present" if token_present else "missing"
+            ),
             "slack_enabled": bool(slack.get("enabled")),
         }
         if seed_mode == "external":
