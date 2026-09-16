@@ -53,6 +53,12 @@ network_policies:
         port: 443
         protocol: rest
         access: full
+      # The Forge OpenAI-compatible model is served by the namespace-local
+      # SAW VM forward, while OpenClaw still identifies the provider as openai.
+      - host: host.containers.internal
+        port: 18084
+        protocol: rest
+        access: full
     binaries:
       - path: /usr/bin/node
       - path: /usr/local/bin/node
