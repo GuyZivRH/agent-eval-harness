@@ -90,6 +90,10 @@ network_policies:
         port: 4000
         protocol: rest
         access: full
+      - host: litellm.gz-forge-eval.svc.cluster.local
+        port: 4000
+        protocol: rest
+        access: full
     binaries:
       - path: /usr/bin/node
       - path: /usr/local/bin/node
@@ -100,6 +104,10 @@ network_policies:
     name: litellm-cluster-short
     endpoints:
       - host: litellm.ab-eval-flow.svc
+        port: 4000
+        protocol: rest
+        access: full
+      - host: litellm.gz-forge-eval.svc
         port: 4000
         protocol: rest
         access: full
