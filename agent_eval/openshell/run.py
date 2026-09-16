@@ -45,7 +45,7 @@ SCRIPTS_DIR = Path(__file__).parents[2] / "skills" / "eval-run" / "scripts"
 # Quay 2026.7.x has no harvestable trajectory (SQLite is wiped with the temp dir).
 _OPENCLAW_STATE_DIR = Path("/sandbox/.openclaw")
 _OPENCLAW_TMP_DIR = Path("/sandbox/tmp")
-_FORGE_AI_GATEWAY_CA_PATH = Path("/sandbox/.forge/ca.crt")
+_FORGE_AI_GATEWAY_CA_PATH = Path("/sandbox/ca.crt")
 
 # Graph tokens + mailbox identity. Also resolved from eval.yaml
 # ``execution.env: $M365_*``; listed here so they reach sandbox exec even
