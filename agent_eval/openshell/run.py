@@ -45,6 +45,7 @@ SCRIPTS_DIR = Path(__file__).parents[2] / "skills" / "eval-run" / "scripts"
 # Quay 2026.7.x has no harvestable trajectory (SQLite is wiped with the temp dir).
 _OPENCLAW_STATE_DIR = Path("/sandbox/.openclaw")
 _OPENCLAW_TMP_DIR = Path("/sandbox/tmp")
+_FORGE_AI_GATEWAY_CA_PATH = Path("/sandbox/.forge/ai-gateway-ca.crt")
 
 # Graph tokens + mailbox identity. Also resolved from eval.yaml
 # ``execution.env: $M365_*``; listed here so they reach sandbox exec even
@@ -513,6 +514,36 @@ def _sandbox_env(config: EvalConfig) -> Dict[str, str]:
                 else:
                     env[key] = str(value)
     return env
+
+
+async def _stage_forge_ai_gateway_ca(
+    sandbox: OpenShellSandbox, name: str, sandbox_env: Dict[str, str]
+) -> None:
+    """Stage the optional Forge AI bridge CA into a sandbox for Node.
+
+    The CI orchestrator mounts only the public CA from its namespace.  The
+    gateway-issued provider bearer remains inside the sandbox; this helper
+    merely lets Node validate the bridge's private TLS chain.
+    """
+    configured = os.environ.get("AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE", "").strip()
+    if not configured:
+        return
+    source = Path(configured)
+    if not source.is_file() or source.stat().st_size == 0:
+        raise RuntimeError(
+            "AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE does not name a readable CA file: "
+            f"{source}"
+        )
+    parent = str(_FORGE_AI_GATEWAY_CA_PATH.parent)
+    mkdir = await sandbox.exec(name, ["mkdir", "-p", parent])
+    if mkdir.return_code:
+        raise RuntimeError(f"Could not create Forge CA directory in sandbox {name}")
+    await sandbox.upload(name, source, str(_FORGE_AI_GATEWAY_CA_PATH))
+    probe = await sandbox.exec(name, ["test", "-s", str(_FORGE_AI_GATEWAY_CA_PATH)])
+    if probe.return_code:
+        raise RuntimeError(f"Forge AI gateway CA was not staged in sandbox {name}")
+    sandbox_env["NODE_EXTRA_CA_CERTS"] = str(_FORGE_AI_GATEWAY_CA_PATH)
+    logger.info("Forge AI gateway CA staged for Node TLS validation")
 
 
 async def _install_m365_file_auth(
@@ -1128,6 +1159,7 @@ async def _run_case(
             # Build env to forward to sandbox (API keys + config env + M365_*)
             sandbox_env = _sandbox_env(config)
             sandbox_env.update({k: v for k, v in sandbox_env_extra.items() if v})
+            await _stage_forge_ai_gateway_ca(sandbox, name, sandbox_env)
             await _install_m365_file_auth(sandbox, name, sandbox_env)
 
             # Build command based on runner type

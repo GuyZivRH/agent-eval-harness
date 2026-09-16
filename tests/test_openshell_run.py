@@ -20,6 +20,7 @@ from agent_eval.openshell.run import (
     _openai_compat_base_url,
     _resolve_prompt,
     _sandbox_env,
+    _stage_forge_ai_gateway_ca,
     _setup_scene,
     build_openclaw_eval_config,
     qualify_openclaw_model,
@@ -166,6 +167,29 @@ class TestSandboxEnv:
         assert env["M365_USER"] == "user@example.com"
         assert "M365_TENANT_ID" not in env
         assert env["FORGE_SOURCES"] == "m365-only"
+
+
+class TestForgeAiGatewayCa:
+    """Tests for the CI-scoped Node trust bundle staging."""
+
+    def test_stages_public_ca_and_sets_node_trust(self, tmp_path, monkeypatch):
+        from agent_eval.openshell.sandbox import OpenShellSandbox
+        import asyncio
+
+        source = tmp_path / "ca.crt"
+        source.write_text("-----BEGIN CERTIFICATE-----\npublic-ca\n-----END CERTIFICATE-----\n")
+        monkeypatch.setenv("AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE", str(source))
+        sandbox = MagicMock(spec=OpenShellSandbox)
+        sandbox.exec = AsyncMock(return_value=MagicMock(return_code=0))
+        sandbox.upload = AsyncMock()
+        env = {}
+
+        asyncio.run(_stage_forge_ai_gateway_ca(sandbox, "case-001", env))
+
+        sandbox.upload.assert_awaited_once_with(
+            "case-001", source, "/sandbox/.forge/ai-gateway-ca.crt"
+        )
+        assert env["NODE_EXTRA_CA_CERTS"] == "/sandbox/.forge/ai-gateway-ca.crt"
 
 
 class TestResolvePrompt:
