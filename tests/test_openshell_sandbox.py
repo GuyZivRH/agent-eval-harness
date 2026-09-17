@@ -100,8 +100,7 @@ class TestOpenShellSandboxCreate:
             assert "--no-auto-providers" in cmd
             assert "--detach" in cmd
             assert "--" in cmd
-            assert "sleep" in cmd
-            assert "infinity" in cmd
+            assert "sh /app/start-governed-forwarders.sh" in " ".join(cmd)
         
         run_async(_test())
 
@@ -115,9 +114,12 @@ class TestOpenShellSandboxCreate:
             cmd = mock_run.call_args[0][0]
             assert "--detach" in cmd
             assert "--" in cmd
-            assert "sleep" in cmd
-            assert "infinity" in cmd
-            assert CREATE_KEEPALIVE == ["sleep", "infinity"]
+            assert CREATE_KEEPALIVE == [
+                "sh",
+                "-c",
+                "sh /app/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
+                "{ cat /tmp/forge-launcher.log >&2; sleep infinity; }",
+            ]
 
         run_async(_test())
 

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 CREATE_KEEPALIVE: List[str] = [
     "sh",
     "-c",
-    "/app/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
+    "sh /app/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
     "{ cat /tmp/forge-launcher.log >&2; sleep infinity; }",
 ]
 
