@@ -618,6 +618,14 @@ async def _prepare_saw_runtime(sandbox: OpenShellSandbox, name: str) -> None:
             f"SAW OpenClaw runtime onboarding failed for {name} "
             f"(rc={result.return_code}): {result.stderr[-1000:]}"
         )
+    plugin = await sandbox.exec(name, ["openclaw", "plugins", "enable", "codex"])
+    if plugin.return_code:
+        listing = await sandbox.exec(name, ["openclaw", "plugins", "list"])
+        raise RuntimeError(
+            f"SAW codex runtime plugin enablement failed for {name} "
+            f"(rc={plugin.return_code}): {plugin.stderr[-1000:]}\n"
+            f"Installed plugins: {listing.stdout[-3000:]}"
+        )
     logger.info("SAW OpenClaw runtime onboarding completed for sandbox %s", name)
 
 
