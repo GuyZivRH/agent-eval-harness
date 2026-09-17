@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 # governed image skills before starting the OpenClaw gateway. Do not replace
 # that entrypoint with `sleep infinity`, or the agent bundle never reaches the
 # sandbox workspace.
-CREATE_KEEPALIVE: List[str] = ["/app/start-governed-forwarders.sh"]
+CREATE_KEEPALIVE: List[str] = [
+    "sh",
+    "-c",
+    "/app/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
+    "{ cat /tmp/forge-launcher.log >&2; sleep infinity; }",
+]
 
 # Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
 # that tree, so exec of the ``openclaw`` shebang returns 126 (EACCES).

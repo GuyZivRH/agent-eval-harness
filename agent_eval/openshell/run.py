@@ -1151,6 +1151,7 @@ async def _run_case(
                 [
                     "sh",
                     "-c",
+                    "cat /tmp/forge-launcher.log 2>/dev/null || true; "
                     "for p in /sandbox/persist/agent-workspace/AGENTS.md "
                     "/sandbox/persist/agent-workspace/IDENTITY.md "
                     "/sandbox/persist/agent-workspace/CLAW.md; do "
