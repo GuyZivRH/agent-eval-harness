@@ -1146,15 +1146,16 @@ async def _run_case(
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
 
-            # OpenShell nests directory uploads at the destination, which would
-            # put shared workspace files under /sandbox/<case-id>/. OpenClaw
-            # runs with /sandbox as its workspace and discovers skills relative
-            # to that root, so upload each case entry to the root explicitly.
-            # This makes dataset.workspace.files (skills/, schemas/, tools/, ...)
-            # visible to OpenClaw while retaining the case input at
-            # /sandbox/input.yaml.
-            for entry in sorted(staged_case.iterdir(), key=lambda path: path.name):
-                await sandbox.upload(name, entry, f"/sandbox/{entry.name}")
+            # Upload files individually. OpenShell nests directory uploads at
+            # the destination (for example, uploading ``skills`` to
+            # /sandbox/skills can produce /sandbox/skills/skills), so
+            # directory-level uploads break OpenClaw's literal paths.
+            for entry in sorted(
+                (path for path in staged_case.rglob("*") if path.is_file()),
+                key=lambda path: str(path.relative_to(staged_case)),
+            ):
+                relative = entry.relative_to(staged_case)
+                await sandbox.upload(name, entry, f"/sandbox/{relative}")
 
             # Verify the files that were staged are actually visible inside the
             # sandbox before invoking the agent.  OpenShell uploads and
