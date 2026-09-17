@@ -17,7 +17,11 @@ logger = logging.getLogger(__name__)
 # Keep the sandbox alive while the runner performs the non-interactive SAW
 # onboarding step after creation. Invoking start-agent as the main process
 # makes provisioning fail because the image's onboarding path expects a TTY.
-CREATE_KEEPALIVE: List[str] = ["sleep", "infinity"]
+# The SAW agent image's launcher stages the Chief-of-Staff workspace and
+# governed image skills before starting the OpenClaw gateway. Do not replace
+# that entrypoint with `sleep infinity`, or the agent bundle never reaches the
+# sandbox workspace.
+CREATE_KEEPALIVE: List[str] = ["/app/start-governed-forwarders.sh"]
 
 # Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
 # that tree, so exec of the ``openclaw`` shebang returns 126 (EACCES).

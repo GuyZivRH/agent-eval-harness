@@ -1151,9 +1151,12 @@ async def _run_case(
                 [
                     "sh",
                     "-c",
-                    "for p in /sandbox/AGENTS.md /sandbox/IDENTITY.md /sandbox/CLAW.md; do "
+                    "for p in /sandbox/persist/agent-workspace/AGENTS.md "
+                    "/sandbox/persist/agent-workspace/IDENTITY.md "
+                    "/sandbox/persist/agent-workspace/CLAW.md; do "
                     "if test -s \"$p\"; then echo \"present $p\"; else echo \"missing $p\"; fi; done; "
-                    "find /sandbox -maxdepth 5 -type f -name SKILL.md -print 2>/dev/null | sort | head -100",
+                    "find /sandbox/persist/agent-workspace -maxdepth 6 -type f -name SKILL.md "
+                    "-print 2>/dev/null | sort | head -100",
                 ],
             )
             logger.info("Image workspace paths for %s:\n%s", case_id, image_paths.stdout.strip())
