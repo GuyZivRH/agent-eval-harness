@@ -152,7 +152,12 @@ class OpenShellSandbox:
         if self.policy:
             cmd.extend(["--policy", str(self.policy)])
         if self.provider:
-            cmd.extend(["--provider", self.provider])
+            # The SAW agent image requires several capability providers in
+            # addition to its model route. Accept a comma-separated value so
+            # the pipeline can attach the complete deployment contract.
+            for provider in (item.strip() for item in self.provider.split(",")):
+                if provider:
+                    cmd.extend(["--provider", provider])
         if CREATE_KEEPALIVE:
             cmd.extend(["--"] + CREATE_KEEPALIVE)
         logger.info(
