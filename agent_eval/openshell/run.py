@@ -1155,7 +1155,19 @@ async def _run_case(
                 key=lambda path: str(path.relative_to(staged_case)),
             ):
                 relative = entry.relative_to(staged_case)
-                await sandbox.upload(name, entry, f"/sandbox/{relative}")
+                remote_path = f"/sandbox/{relative}"
+                # The published OpenClaw image may already provide runtime
+                # files (for example /sandbox/bin/m365). OpenShell upload
+                # cannot replace a path whose parent is a file/directory, so
+                # preserve an image-provided path and only stage missing files.
+                exists = await sandbox.exec(
+                    name,
+                    ["sh", "-c", f"test -e {shlex.quote(remote_path)}"],
+                )
+                if exists.return_code == 0:
+                    logger.info("Preserving image-provided workspace path %s", remote_path)
+                    continue
+                await sandbox.upload(name, entry, remote_path)
 
             # Verify the files that were staged are actually visible inside the
             # sandbox before invoking the agent.  OpenShell uploads and
