@@ -258,6 +258,10 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
             "mode": "replace",
             "providers": {},
         },
+        # The published SAW image may carry legacy relative/tilde skill
+        # entries.  Evaluation workspaces are mounted at /sandbox, so make
+        # the authoritative workspace skill directory explicit.
+        "skills": {"load": {"extraDirs": ["/sandbox/skills"]}},
     }
     for name, provider_cfg in providers.items():
         provider_cfg = provider_cfg or {}
