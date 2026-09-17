@@ -1146,6 +1146,18 @@ async def _run_case(
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
 
+            image_paths = await sandbox.exec(
+                name,
+                [
+                    "sh",
+                    "-c",
+                    "for p in /sandbox/AGENTS.md /sandbox/IDENTITY.md /sandbox/CLAW.md; do "
+                    "if test -s \"$p\"; then echo \"present $p\"; else echo \"missing $p\"; fi; done; "
+                    "find /sandbox -maxdepth 5 -type f -name SKILL.md -print 2>/dev/null | sort | head -100",
+                ],
+            )
+            logger.info("Image workspace paths for %s:\n%s", case_id, image_paths.stdout.strip())
+
             # Upload files individually. OpenShell nests directory uploads at
             # the destination (for example, uploading ``skills`` to
             # /sandbox/skills can produce /sandbox/skills/skills), so
