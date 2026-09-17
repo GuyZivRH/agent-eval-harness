@@ -14,12 +14,11 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Kubernetes sandboxes use restartPolicy Never: the argv after `--` is the
-# pod main process. A short-lived command (e.g. `echo`) exits immediately and
-# the gateway reports PodFailed. OpenClaw images typically include `sleep`
-# (and Node); they often lack python3. `--detach` (OpenShell >= 0.0.111)
-# returns once the sandbox is Ready instead of attaching to the keep-alive.
-CREATE_KEEPALIVE = ["sleep", "infinity"]
+# Preserve the image entrypoint. SAW images use it to stage the runtime,
+# register plugins, and configure the governed model route. Replacing it with
+# `sleep infinity` bypasses that setup and leaves OpenClaw on its default
+# (often unavailable) runtime.
+CREATE_KEEPALIVE: List[str] = []
 
 # Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
 # that tree, so exec of the ``openclaw`` shebang returns 126 (EACCES).
@@ -151,7 +150,8 @@ class OpenShellSandbox:
             cmd.extend(["--policy", str(self.policy)])
         if self.provider:
             cmd.extend(["--provider", self.provider])
-        cmd.extend(["--"] + CREATE_KEEPALIVE)
+        if CREATE_KEEPALIVE:
+            cmd.extend(["--"] + CREATE_KEEPALIVE)
         logger.info(
             "OpenShell sandbox create requested name=%s gateway=%s provider=%s image=%s policy=%s",
             name,

@@ -99,12 +99,12 @@ class TestOpenShellSandboxCreate:
             assert "--no-tty" in cmd
             assert "--no-auto-providers" in cmd
             assert "--detach" in cmd
-            assert cmd[cmd.index("--"):] == ["--"] + CREATE_KEEPALIVE
+            assert "--" not in cmd
             assert "echo" not in cmd
         
         run_async(_test())
 
-    def test_create_uses_detach_and_keepalive(self):
+    def test_create_preserves_image_entrypoint(self):
         sandbox = OpenShellSandbox(gateway_endpoint="https://gw:1234")
 
         async def _test():
@@ -112,12 +112,9 @@ class TestOpenShellSandboxCreate:
                 await sandbox.create("test", "image:v1")
 
             cmd = mock_run.call_args[0][0]
-            sep = cmd.index("--")
-            assert "--detach" in cmd[:sep]
-            assert cmd[sep:] == ["--"] + CREATE_KEEPALIVE
-            assert CREATE_KEEPALIVE == ["sleep", "infinity"]
-            assert cmd[-3:] != ["echo", "sandbox", "ready"]
-            assert cmd[-2:] != ["sandbox", "ready"]
+            assert "--detach" in cmd
+            assert "--" not in cmd
+            assert CREATE_KEEPALIVE == []
 
         run_async(_test())
 
