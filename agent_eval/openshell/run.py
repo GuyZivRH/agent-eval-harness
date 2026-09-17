@@ -516,6 +516,44 @@ def _sandbox_env(config: EvalConfig) -> Dict[str, str]:
     return env
 
 
+def _safe_endpoint(value: str) -> str:
+    """Return endpoint metadata without query strings or credentials."""
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(value)
+    if not parsed.scheme or not parsed.netloc:
+        return value.split("?", 1)[0]
+    return f"{parsed.scheme}://{parsed.hostname or parsed.netloc}:{parsed.port or ''}{parsed.path}"
+
+
+def _log_model_diagnostics(
+    case_id: str, model: str, sandbox_env: Dict[str, str], sandbox_name: str
+) -> None:
+    """Log model routing metadata while never logging credential values."""
+    endpoints = {
+        key: _safe_endpoint(value)
+        for key, value in sandbox_env.items()
+        if key.endswith("BASE_URL") and value
+    }
+    present = sorted(
+        key for key, value in sandbox_env.items()
+        if value and (key.endswith("API_KEY") or key.endswith("TOKEN") or "BEARER" in key)
+    )
+    proxy = next(
+        (sandbox_env.get(key) for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy") if sandbox_env.get(key)),
+        "<none>",
+    )
+    logger.info(
+        "Model routing diagnostics case=%s sandbox=%s model=%s endpoints=%s proxy=%s credential_vars=%s",
+        case_id,
+        sandbox_name,
+        model,
+        endpoints or {},
+        _safe_endpoint(proxy),
+        present,
+    )
+
+
 async def _stage_forge_ai_gateway_ca(
     sandbox: OpenShellSandbox, name: str, sandbox_env: Dict[str, str]
 ) -> None:
@@ -1315,6 +1353,7 @@ async def _run_case(
                 env=sandbox_env,
                 timeout_s=timeout,
             )
+            _log_model_diagnostics(case_id, openclaw_model, sandbox_env, name)
             duration_s = time.monotonic() - start_time
             if result.return_code:
                 logger.warning(

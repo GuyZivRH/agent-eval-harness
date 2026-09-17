@@ -152,7 +152,15 @@ class OpenShellSandbox:
         if self.provider:
             cmd.extend(["--provider", self.provider])
         cmd.extend(["--"] + CREATE_KEEPALIVE)
-        await self._run(cmd)
+        logger.info(
+            "OpenShell sandbox create requested name=%s gateway=%s provider=%s image=%s policy=%s",
+            name,
+            self.gateway,
+            self.provider or "<none>",
+            image,
+            self.policy or "<none>",
+        )
+        await self._run(cmd, operation=f"sandbox create name={name}")
         return name
 
     async def upload(self, name: str, local: Path, remote: str) -> None:
@@ -169,7 +177,7 @@ class OpenShellSandbox:
             RuntimeError: If upload fails.
         """
         cmd = self._base_cmd() + ["sandbox", "upload", name, str(local), remote]
-        await self._run(cmd)
+        await self._run(cmd, operation=f"sandbox upload name={name} remote={remote}")
 
     async def download(self, name: str, remote: str, local: Path) -> None:
         """Download file or directory from sandbox.
@@ -184,7 +192,7 @@ class OpenShellSandbox:
         """
         local.parent.mkdir(parents=True, exist_ok=True)
         cmd = self._base_cmd() + ["sandbox", "download", name, remote, str(local)]
-        await self._run(cmd)
+        await self._run(cmd, operation=f"sandbox download name={name} remote={remote}")
 
     async def exec(
         self,
@@ -254,7 +262,9 @@ class OpenShellSandbox:
         except Exception as e:
             logger.debug(f"Sandbox delete failed (may already be gone): {e}")
 
-    async def _run(self, cmd: List[str], check: bool = True) -> str:
+    async def _run(
+        self, cmd: List[str], check: bool = True, operation: str = "openshell command"
+    ) -> str:
         """Run OpenShell CLI command.
 
         Args:
@@ -270,6 +280,13 @@ class OpenShellSandbox:
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=PIPE, stderr=PIPE)
         stdout, stderr = await proc.communicate()
         if check and proc.returncode != 0:
+            logger.error(
+                "OpenShell operation failed operation=%s rc=%s stdout=%s stderr=%s",
+                operation,
+                proc.returncode,
+                stdout.decode(errors="replace")[-2000:],
+                stderr.decode(errors="replace")[-4000:],
+            )
             raise RuntimeError(
                 f"OpenShell command failed: {' '.join(cmd)}\n{stderr.decode()}"
             )
