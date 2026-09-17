@@ -314,6 +314,61 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
     return openclaw_config, qualified
 
 
+async def _run_openclaw_llm_preflight(
+    sandbox: OpenShellSandbox,
+    sandbox_name: str,
+    config_path: Path,
+    qualified_model: str,
+) -> None:
+    """Make one minimal provider call inside the sandbox before the case.
+
+    This intentionally uses the same OpenClaw provider configuration that the
+    case will use, but calls the OpenAI-compatible endpoint directly.  It
+    separates model/network failures from agent tools, workspace, and memory
+    failures and avoids spending the full case timeout on an unreachable LLM.
+    """
+    provider, model_id = qualified_model.split("/", 1)
+    script = (
+        "const fs=require('fs');"
+        "const [configPath,providerName,modelId]=process.argv.slice(1);"
+        "const c=JSON.parse(fs.readFileSync(configPath,'utf8'));"
+        "const p=c.models.providers[providerName];"
+        "if(!p||!p.baseUrl)throw new Error('provider config missing: '+providerName);"
+        "const url=p.baseUrl.replace(/\\/$/,'')+'/chat/completions';"
+        "const headers={'content-type':'application/json'};"
+        "if(p.apiKey&&p.apiKey!=='empty')headers.authorization='Bearer '+p.apiKey;"
+        "const ctl=new AbortController();"
+        "const timer=setTimeout(()=>ctl.abort(),30000);"
+        "fetch(url,{method:'POST',headers,signal:ctl.signal,body:JSON.stringify({"
+        "model:modelId,messages:[{role:'user',content:'How are you? Reply with exactly GLM_PREFLIGHT_OK.'}],"
+        "max_tokens:20,temperature:0})})"
+        ".then(async r=>{const text=await r.text();"
+        "if(!r.ok)throw new Error('HTTP '+r.status+' '+text.slice(0,300));"
+        "let body;try{body=JSON.parse(text)}catch{throw new Error('non-JSON response: '+text.slice(0,300))}"
+        "const content=body.choices?.[0]?.message?.content||'';"
+        "console.log('LLM_PREFLIGHT_OK provider='+providerName+' model='+modelId+' content='+JSON.stringify(content));"
+        "}).finally(()=>clearTimeout(timer)).catch(e=>{console.error('LLM_PREFLIGHT_FAILED '+e.message);process.exitCode=1});"
+    )
+    logger.info(
+        "Running in-sandbox LLM preflight provider=%s model=%s endpoint=<from config>",
+        provider,
+        model_id,
+    )
+    result = await sandbox.exec(
+        sandbox_name,
+        ["node", "-e", script, str(config_path), provider, model_id],
+        workdir="/sandbox",
+        timeout_s=40,
+    )
+    output = ((result.stdout or "") + " " + (result.stderr or "")).strip()
+    if result.return_code:
+        raise RuntimeError(
+            f"In-sandbox LLM preflight failed for {qualified_model}: "
+            f"{output[:600]}"
+        )
+    logger.info("In-sandbox LLM preflight passed: %s", output[:600])
+
+
 def _child_env(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """Environment for a spawned python child.
 
@@ -1314,6 +1369,9 @@ async def _run_case(
                             "v.apiKey=value;}}"
                             "fs.writeFileSync(p,JSON.stringify(c));",
                         ],
+                    )
+                    await _run_openclaw_llm_preflight(
+                        sandbox, name, config_path, openclaw_model
                     )
                     sandbox_env["OPENCLAW_CONFIG_PATH"] = str(config_path)
                     auth_env_only = False
