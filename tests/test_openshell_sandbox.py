@@ -99,8 +99,8 @@ class TestOpenShellSandboxCreate:
             assert "--no-tty" in cmd
             assert "--no-auto-providers" in cmd
             assert "--detach" in cmd
-            assert "--" not in cmd
-            assert "echo" not in cmd
+            assert "--" in cmd
+            assert "/sandbox/persist/.forge-runtime/start-agent" in cmd
         
         run_async(_test())
 
@@ -113,8 +113,9 @@ class TestOpenShellSandboxCreate:
 
             cmd = mock_run.call_args[0][0]
             assert "--detach" in cmd
-            assert "--" not in cmd
-            assert CREATE_KEEPALIVE == []
+            assert "--" in cmd
+            assert "/sandbox/persist/.forge-runtime/start-agent" in cmd
+            assert CREATE_KEEPALIVE == ["/sandbox/persist/.forge-runtime/start-agent"]
 
         run_async(_test())
 

@@ -14,11 +14,11 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Preserve the image entrypoint. SAW images use it to stage the runtime,
-# register plugins, and configure the governed model route. Replacing it with
-# `sleep infinity` bypasses that setup and leaves OpenClaw on its default
-# (often unavailable) runtime.
-CREATE_KEEPALIVE: List[str] = []
+# Invoke the SAW image's startup hook explicitly. OpenShell's default sandbox
+# command is not guaranteed to run the image entrypoint, and replacing it with
+# `sleep infinity` bypasses runtime/plugin registration. The hook stages the
+# embedded runtime, registers the codex plugin, and keeps the sandbox alive.
+CREATE_KEEPALIVE: List[str] = ["/sandbox/persist/.forge-runtime/start-agent"]
 
 # Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
 # that tree, so exec of the ``openclaw`` shebang returns 126 (EACCES).
