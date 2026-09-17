@@ -346,7 +346,10 @@ async def _run_openclaw_llm_preflight(
         "if(!r.ok)throw new Error('HTTP '+r.status+' '+text.slice(0,300));"
         "let body;try{body=JSON.parse(text)}catch{throw new Error('non-JSON response: '+text.slice(0,300))}"
         "const content=body.choices?.[0]?.message?.content||'';"
-        "console.log('LLM_PREFLIGHT_OK provider='+providerName+' model='+modelId+' content='+JSON.stringify(content));"
+        "const summary={status:r.status,choices:Array.isArray(body.choices)?body.choices.length:0,"
+        "usage:body.usage||null,error:body.error||null,contentPreview:content.slice(0,120)};"
+        "if(!content.trim())throw new Error('empty model response '+JSON.stringify(summary));"
+        "console.log('LLM_PREFLIGHT_OK provider='+providerName+' model='+modelId+' '+JSON.stringify(summary));"
         "}).finally(()=>clearTimeout(timer)).catch(e=>{console.error('LLM_PREFLIGHT_FAILED '+e.message);process.exitCode=1});"
     )
     logger.info(
