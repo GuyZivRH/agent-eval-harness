@@ -595,48 +595,6 @@ async def _stage_forge_ai_gateway_ca(
     logger.info("Forge AI gateway CA staged for Node TLS validation")
 
 
-async def _prepare_saw_runtime(sandbox: OpenShellSandbox, name: str) -> None:
-    """Initialize the SAW image's embedded OpenClaw runtime non-interactively.
-
-    The image onboarding path normally runs from its interactive entrypoint.
-    CI creates a detached keepalive sandbox instead, so invoke onboarding
-    explicitly before uploading the case and executing the agent. This stages
-    the runtime/plugin registry, including the codex harness plugin.
-    """
-    result = await sandbox.exec(
-        name,
-        [
-            "openclaw",
-            "onboard",
-            "--non-interactive",
-            "--accept-risk",
-            "--skip-health",
-        ],
-    )
-    if result.return_code:
-        raise RuntimeError(
-            f"SAW OpenClaw runtime onboarding failed for {name} "
-            f"(rc={result.return_code}): {result.stderr[-1000:]}"
-        )
-    install = await sandbox.exec(
-        name, ["openclaw", "plugins", "install", "@openclaw/codex"]
-    )
-    if install.return_code:
-        raise RuntimeError(
-            f"SAW codex runtime plugin installation failed for {name} "
-            f"(rc={install.return_code}): {install.stderr[-1200:]}"
-        )
-    plugin = await sandbox.exec(name, ["openclaw", "plugins", "enable", "codex"])
-    if plugin.return_code:
-        listing = await sandbox.exec(name, ["openclaw", "plugins", "list"])
-        raise RuntimeError(
-            f"SAW codex runtime plugin enablement failed for {name} "
-            f"(rc={plugin.return_code}): {plugin.stderr[-1000:]}\n"
-            f"Installed plugins: {listing.stdout[-3000:]}"
-        )
-    logger.info("SAW OpenClaw runtime onboarding completed for sandbox %s", name)
-
-
 async def _install_m365_file_auth(
     sandbox: OpenShellSandbox,
     name: str,
@@ -1126,7 +1084,6 @@ async def _run_case(
         try:
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
-            await _prepare_saw_runtime(sandbox, name)
 
             # OpenShell nests directory uploads at the destination, which would
             # put shared workspace files under /sandbox/<case-id>/. OpenClaw
