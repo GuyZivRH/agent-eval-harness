@@ -1173,9 +1173,11 @@ async def _run_case(
             # sandbox before invoking the agent.  OpenShell uploads and
             # OpenClaw's workspace are separate layers; a successful upload
             # request alone does not prove that the agent can read the file.
-            required_workspace_files = [
-                ("AGENTS.md", "/sandbox/AGENTS.md"),
-            ]
+            # Persona instructions and skills come exclusively from the
+            # published OpenClaw SAW image. AEH supplies only case data and
+            # supporting resources, so there is no AEH workspace bootstrap
+            # file to validate here.
+            required_workspace_files = []
             workspace_preflight_results = []
             for _relative_path, sandbox_path in required_workspace_files:
                 probe = await sandbox.exec(
