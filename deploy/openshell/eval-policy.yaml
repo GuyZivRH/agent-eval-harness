@@ -24,6 +24,8 @@ filesystem_policy:
     - /sbin
     - /opt/openclaw  # Required for Quay OpenClaw image (installed under /opt)
     - /opt/forge     # Required for the SAW launcher and image-provided persona/skills
+    - /opt/forge/**  # OpenShell requires an explicit recursive grant for image trees
+    - /app           # Compatibility symlink to the SAW launcher
   read_write:
     - /sandbox
     - /tmp
