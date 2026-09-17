@@ -177,16 +177,21 @@ def resolve_plugin_dir(config, configured: str) -> Path:
 def workspace_source_roots(config) -> list:
     """Directories a ``WorkspaceFile.source`` may resolve into.
 
-    Always the project root; plus each configured ``runner.plugin_dirs`` entry
-    (so a shared file may reference a live SKILL.md in a plugin). A plugin dir
+    Always the project root and the directory containing the loaded eval config;
+    plus each configured ``runner.plugin_dirs`` entry (so a shared file may
+    reference a live SKILL.md in a plugin). A plugin dir
     that cannot be resolved (misconfigured, escapes the project via symlink) is
     dropped rather than raised, so one bad plugin entry never blocks materializing
     a file whose source is valid.
     """
     project = Path(config.project_root).resolve()
     roots = [project]
-    runner = getattr(config, "runner", None)
     config_dir = getattr(config, "config_dir", None)
+    if config_dir:
+        config_root = Path(config_dir).resolve()
+        if config_root not in roots:
+            roots.append(config_root)
+    runner = getattr(config, "runner", None)
     for configured in getattr(runner, "plugin_dirs", None) or []:
         try:
             roots.append(
@@ -201,7 +206,8 @@ def workspace_source_roots(config) -> list:
 def resolve_workspace_source(config, source: str) -> Optional[Path]:
     """Resolve a shared workspace file's ``source`` to a real, in-bounds path.
 
-    Relative sources resolve against the project root, absolute sources as-is.
+    Relative sources resolve against the eval config directory first, then the
+    project root; absolute sources are used as-is.
     Symlinks ARE followed (unlike per-case string entries, which skip them) —
     the point is to materialize a live SKILL.md that lives outside the case dir.
     Returns the resolved path only if it exists and its REAL location stays
@@ -214,14 +220,20 @@ def resolve_workspace_source(config, source: str) -> Optional[Path]:
     roots = workspace_source_roots(config)
     raw = Path(source).expanduser()
     project = Path(config.project_root).resolve()
-    candidate = raw if raw.is_absolute() else (project / raw)
-    try:
-        resolved = candidate.resolve(strict=True)
-    except (OSError, RuntimeError):
-        return None
-    if not any(resolved.is_relative_to(root) for root in roots):
-        return None
-    return resolved
+    config_dir = getattr(config, "config_dir", None)
+    candidates = [raw] if raw.is_absolute() else []
+    if not raw.is_absolute() and config_dir:
+        candidates.append(Path(config_dir).resolve() / raw)
+    if not raw.is_absolute():
+        candidates.append(project / raw)
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if any(resolved.is_relative_to(root) for root in roots):
+            return resolved
+    return None
 
 
 def resolve_plugin_skill_roots(plugin_dir: str | Path) -> list[Path]:
