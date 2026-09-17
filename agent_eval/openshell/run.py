@@ -1165,28 +1165,23 @@ async def _run_case(
                 ("skills/daily-briefing/SKILL.md", "/sandbox/skills/daily-briefing/SKILL.md"),
                 ("skills/microsoft365/SKILL.md", "/sandbox/skills/microsoft365/SKILL.md"),
             ]
-            staged_names = {
-                str(path.relative_to(staged_case))
-                for path in staged_case.rglob("*")
-                if path.is_file()
-            }
-            for relative_path, sandbox_path in required_workspace_files:
-                if relative_path not in staged_names:
-                    continue
+            workspace_preflight_results = []
+            for _relative_path, sandbox_path in required_workspace_files:
                 probe = await sandbox.exec(
                     name,
                     ["sh", "-c", f"test -s {shlex.quote(sandbox_path)}"],
                 )
                 if probe.return_code != 0:
                     raise RuntimeError(
-                        f"Workspace preflight failed for {case_id}: "
-                        f"{sandbox_path} is not readable inside the sandbox"
+                        f"Workspace preflight failed for {case_id}: required file "
+                        f"{sandbox_path} is missing or empty inside the sandbox"
                     )
-            if any(path in staged_names for path, _ in required_workspace_files):
-                logger.info(
-                    "Workspace preflight passed for %s: AGENTS.md and staged skill files are readable",
-                    case_id,
-                )
+                workspace_preflight_results.append(sandbox_path)
+            logger.info(
+                "Workspace preflight passed for %s: %s",
+                case_id,
+                ", ".join(workspace_preflight_results),
+            )
 
             input_yaml_path = staged_case / "input.yaml"
             if input_yaml_path.exists():
