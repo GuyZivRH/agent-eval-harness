@@ -605,7 +605,13 @@ async def _prepare_saw_runtime(sandbox: OpenShellSandbox, name: str) -> None:
     """
     result = await sandbox.exec(
         name,
-        ["openclaw", "onboard", "--non-interactive", "--accept-risk"],
+        [
+            "openclaw",
+            "onboard",
+            "--non-interactive",
+            "--accept-risk",
+            "--skip-health",
+        ],
     )
     if result.return_code:
         raise RuntimeError(
