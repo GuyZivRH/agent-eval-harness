@@ -14,11 +14,10 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Invoke the SAW image's startup hook explicitly. OpenShell's default sandbox
-# command is not guaranteed to run the image entrypoint, and replacing it with
-# `sleep infinity` bypasses runtime/plugin registration. The hook stages the
-# embedded runtime, registers the codex plugin, and keeps the sandbox alive.
-CREATE_KEEPALIVE: List[str] = ["/sandbox/persist/.forge-runtime/start-agent"]
+# Keep the sandbox alive while the runner performs the non-interactive SAW
+# onboarding step after creation. Invoking start-agent as the main process
+# makes provisioning fail because the image's onboarding path expects a TTY.
+CREATE_KEEPALIVE: List[str] = ["sleep", "infinity"]
 
 # Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
 # that tree, so exec of the ``openclaw`` shebang returns 126 (EACCES).
