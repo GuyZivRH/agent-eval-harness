@@ -1172,6 +1172,18 @@ async def _run_case(
                     logger.info("Preserving image-provided workspace path %s", remote_path)
                     continue
                 await sandbox.upload(name, entry, remote_path)
+                # Some published SAW images register workspace skills using
+                # the literal ``~/skills`` prefix instead of expanding HOME.
+                # Keep a compatibility copy at that path so OpenClaw can
+                # load the same skills regardless of how the image resolves it.
+                if relative.parts and relative.parts[0] == "skills":
+                    legacy_remote = f"/sandbox/~/{relative}"
+                    legacy_exists = await sandbox.exec(
+                        name,
+                        ["sh", "-c", f"test -e {shlex.quote(legacy_remote)}"],
+                    )
+                    if legacy_exists.return_code != 0:
+                        await sandbox.upload(name, entry, legacy_remote)
 
             # Verify the files that were staged are actually visible inside the
             # sandbox before invoking the agent.  OpenShell uploads and
