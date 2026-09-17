@@ -341,7 +341,10 @@ async def _run_openclaw_llm_preflight(
         "const timer=setTimeout(()=>ctl.abort(),30000);"
         "fetch(url,{method:'POST',headers,signal:ctl.signal,body:JSON.stringify({"
         "model:modelId,messages:[{role:'user',content:'How are you? Reply with exactly GLM_PREFLIGHT_OK.'}],"
-        "max_tokens:20,temperature:0})})"
+        # GLM can spend a small completion budget on hidden reasoning before
+        # producing visible text; 20 tokens can therefore yield an empty
+        # content field even when the model is healthy.
+        "max_tokens:128,temperature:0})})"
         ".then(async r=>{const text=await r.text();"
         "if(!r.ok)throw new Error('HTTP '+r.status+' '+text.slice(0,300));"
         "let body;try{body=JSON.parse(text)}catch{throw new Error('non-JSON response: '+text.slice(0,300))}"
