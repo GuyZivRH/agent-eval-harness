@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 CREATE_KEEPALIVE: List[str] = [
     "sh",
     "-c",
-    "sh /app/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
+    "sh /opt/forge/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
     "{ cat /tmp/forge-launcher.log >&2; sleep infinity; }",
 ]
 
@@ -122,7 +122,10 @@ class OpenShellSandbox:
         in CI when one was registered; keep endpoint mode for local/default use.
         """
         gateway_name = os.environ.get("OPENSHELL_GATEWAY_NAME", "").strip()
-        if gateway_name:
+        # A namespace-local TLS bridge terminates the CLI connection on
+        # localhost and presents the deployment client certificate upstream.
+        # Do not let a stale named profile replace that endpoint.
+        if gateway_name and not self.gateway.startswith(("https://127.0.0.1:", "http://127.0.0.1:")):
             return ["openshell", "-g", gateway_name]
         return ["openshell", "--gateway-endpoint", self.gateway]
 
