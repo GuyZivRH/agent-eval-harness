@@ -122,12 +122,20 @@ class OpenShellSandbox:
         in CI when one was registered; keep endpoint mode for local/default use.
         """
         gateway_name = os.environ.get("OPENSHELL_GATEWAY_NAME", "").strip()
+        bridge_enabled = os.environ.get("OPENSHELL_MTLS_BRIDGE", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        gateway_endpoint = self.gateway
+        if bridge_enabled and "openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local" in gateway_endpoint:
+            gateway_endpoint = "https://127.0.0.1:17671"
         # A namespace-local TLS bridge terminates the CLI connection on
         # localhost and presents the deployment client certificate upstream.
         # Do not let a stale named profile replace that endpoint.
-        if gateway_name and not self.gateway.startswith(("https://127.0.0.1:", "http://127.0.0.1:")):
+        if gateway_name and gateway_endpoint == self.gateway and not gateway_endpoint.startswith(("https://127.0.0.1:", "http://127.0.0.1:")):
             return ["openshell", "-g", gateway_name]
-        return ["openshell", "--gateway-endpoint", self.gateway]
+        return ["openshell", "--gateway-endpoint", gateway_endpoint]
 
     async def create(self, name: str, image: str) -> str:
         """Create sandbox and wait until Ready.
