@@ -122,13 +122,8 @@ class OpenShellSandbox:
         in CI when one was registered; keep endpoint mode for local/default use.
         """
         gateway_name = os.environ.get("OPENSHELL_GATEWAY_NAME", "").strip()
-        bridge_enabled = os.environ.get("OPENSHELL_MTLS_BRIDGE", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-        }
         gateway_endpoint = self.gateway
-        if bridge_enabled and "openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local" in gateway_endpoint:
+        if "openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local" in gateway_endpoint:
             gateway_endpoint = "https://127.0.0.1:17671"
         # A namespace-local TLS bridge terminates the CLI connection on
         # localhost and presents the deployment client certificate upstream.
