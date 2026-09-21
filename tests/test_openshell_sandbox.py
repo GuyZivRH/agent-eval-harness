@@ -5,12 +5,15 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
 from agent_eval.openshell.sandbox import (
     CREATE_KEEPALIVE,
     ExecResult,
     OpenShellSandbox,
+    _model_endpoints_from_env,
     bundled_eval_policy,
+    effective_eval_policy,
 )
 
 
@@ -53,8 +56,13 @@ class TestOpenShellSandbox:
         assert "graph.microsoft.com" in text
         assert "login.microsoftonline.com" in text
         assert "/usr/bin/curl" in text
-        assert "litellm.ab-eval-flow.svc.cluster.local" in text
         assert "inference.local" in text
+        # The litellm rule must exist but must NOT name a deployment namespace:
+        # a hardcoded Service host denies every other namespace its own model
+        # endpoint. effective_eval_policy() fills the endpoints in at runtime.
+        assert "litellm_cluster" in text
+        assert "ab-eval-flow" not in text
+        assert "gz-forge-eval" not in text.split("forge_ai_gateway")[0]
 
     def test_from_env_with_values(self, monkeypatch):
         monkeypatch.setenv("OPENSHELL_GATEWAY_ENDPOINT", "https://gateway.example.com:8080")
@@ -100,7 +108,7 @@ class TestOpenShellSandboxCreate:
             assert "--no-auto-providers" in cmd
             assert "--detach" in cmd
             assert "--" in cmd
-            assert "sh /app/start-governed-forwarders.sh" in " ".join(cmd)
+            assert "sh /opt/forge/start-governed-forwarders.sh" in " ".join(cmd)
         
         run_async(_test())
 
@@ -117,7 +125,7 @@ class TestOpenShellSandboxCreate:
             assert CREATE_KEEPALIVE == [
                 "sh",
                 "-c",
-                "sh /app/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
+                "sh /opt/forge/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
                 "{ cat /tmp/forge-launcher.log >&2; sleep infinity; }",
             ]
 
@@ -418,3 +426,64 @@ class TestExecResult:
         assert result.stdout == "out"
         assert result.stderr == "err"
         assert result.return_code == 42
+
+
+class TestEvalPolicyEndpoints:
+    """The eval policy must follow the configured model endpoint.
+
+    Hardcoding a Service host in deploy/openshell/eval-policy.yaml only ever
+    works for the namespace it names; every other deployment is denied its own
+    model endpoint.
+    """
+
+    def test_endpoints_derived_from_model_base_url(self, monkeypatch):
+        monkeypatch.setenv(
+            "AGENT_EVAL_MODEL_BASE_URL",
+            "http://litellm.my-ns.svc.cluster.local:4000/v1",
+        )
+        endpoints = _model_endpoints_from_env()
+        assert {"host": "litellm.my-ns.svc.cluster.local", "port": 4000,
+                "protocol": "rest", "access": "full"} in endpoints
+        # OpenClaw may dial the short Service form of the same host
+        assert any(e["host"] == "litellm.my-ns.svc" for e in endpoints)
+
+    def test_https_defaults_to_443(self, monkeypatch):
+        monkeypatch.delenv("AGENT_EVAL_MODEL_BASE_URL", raising=False)
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://models.example.com/v1")
+        assert _model_endpoints_from_env() == [
+            {"host": "models.example.com", "port": 443,
+             "protocol": "rest", "access": "full"},
+        ]
+
+    def test_policy_gains_the_configured_endpoint(self, monkeypatch, tmp_path):
+        policy = tmp_path / "eval-policy.yaml"
+        policy.write_text(yaml.safe_dump({
+            "version": 1,
+            "network_policies": {
+                "litellm_cluster": {"name": "litellm-cluster", "endpoints": []},
+            },
+        }))
+        monkeypatch.setenv(
+            "AGENT_EVAL_MODEL_BASE_URL", "http://litellm.my-ns.svc.cluster.local:4000/v1"
+        )
+
+        effective = effective_eval_policy(policy)
+
+        assert effective != policy
+        doc = yaml.safe_load(effective.read_text())
+        hosts = [e["host"] for e in doc["network_policies"]["litellm_cluster"]["endpoints"]]
+        assert "litellm.my-ns.svc.cluster.local" in hosts
+        # the binaries that dial out must be preserved for the rule to apply
+        assert doc["network_policies"]["litellm_cluster"]["binaries"]
+
+    def test_policy_unchanged_without_configuration(self, monkeypatch, tmp_path):
+        for var in ("AGENT_EVAL_MODEL_BASE_URL", "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"):
+            monkeypatch.delenv(var, raising=False)
+        policy = tmp_path / "eval-policy.yaml"
+        policy.write_text(yaml.safe_dump({"version": 1}))
+        assert effective_eval_policy(policy) == policy
+
+    def test_missing_policy_is_tolerated(self, monkeypatch):
+        monkeypatch.setenv("AGENT_EVAL_MODEL_BASE_URL", "http://litellm.my-ns.svc:4000")
+        assert effective_eval_policy(None) is None
