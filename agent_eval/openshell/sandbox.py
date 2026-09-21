@@ -7,10 +7,12 @@ This is NOT a Harbor BaseEnvironment - it's a direct orchestration helper.
 import asyncio
 import logging
 import os
+import tempfile
 from asyncio.subprocess import PIPE
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,80 @@ _BUNDLED_EVAL_POLICY = (
 def bundled_eval_policy() -> Optional[Path]:
     """Return the repo eval-policy.yaml if present (allows /opt/openclaw)."""
     return _BUNDLED_EVAL_POLICY if _BUNDLED_EVAL_POLICY.is_file() else None
+
+
+def _model_endpoints_from_env() -> List[Dict[str, object]]:
+    """Endpoints the sandbox must reach for model traffic, from configuration.
+
+    The bundled policy cannot name them: a Service host is namespace-specific,
+    so anything hardcoded works for one deployment and denies every other one.
+    """
+    endpoints: List[Dict[str, object]] = []
+    for var in ("AGENT_EVAL_MODEL_BASE_URL", "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"):
+        raw = os.environ.get(var, "").strip()
+        if not raw:
+            continue
+        parsed = urlparse(raw if "://" in raw else f"http://{raw}")
+        host = parsed.hostname
+        if not host:
+            continue
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        entry = {"host": host, "port": port, "protocol": "rest", "access": "full"}
+        if entry not in endpoints:
+            endpoints.append(entry)
+        # OpenClaw may dial the short Service form of the same host.
+        if host.endswith(".svc.cluster.local"):
+            short = {**entry, "host": host[: -len(".cluster.local")]}
+            if short not in endpoints:
+                endpoints.append(short)
+    return endpoints
+
+
+def effective_eval_policy(policy_file: Optional[Path]) -> Optional[Path]:
+    """Return a policy that also allows the configured model endpoint.
+
+    Returns ``policy_file`` unchanged when there is nothing to add, or PyYAML is
+    unavailable, or the file cannot be parsed — the caller should still get a
+    usable policy rather than an exception.
+    """
+    endpoints = _model_endpoints_from_env()
+    if policy_file is None or not endpoints:
+        return policy_file
+    try:
+        import yaml  # imported lazily: policy augmentation is optional
+    except ImportError:  # pragma: no cover - depends on the runtime image
+        logger.warning("PyYAML unavailable; using the eval policy unchanged")
+        return policy_file
+    try:
+        doc = yaml.safe_load(policy_file.read_text()) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        logger.warning("Could not read eval policy %s (%s); using it unchanged",
+                       policy_file, exc)
+        return policy_file
+
+    rule = (doc.setdefault("network_policies", {})
+               .setdefault("litellm_cluster", {"name": "litellm-cluster"}))
+    existing = rule.setdefault("endpoints", []) or []
+    added = [e for e in endpoints if e not in existing]
+    if not added:
+        return policy_file
+    rule["endpoints"] = existing + added
+    rule.setdefault("binaries", [
+        {"path": "/usr/bin/node"},
+        {"path": "/usr/local/bin/node"},
+        {"path": "/usr/local/bin/openclaw"},
+        {"path": "/opt/openclaw/node_modules/openclaw/openclaw.mjs"},
+    ])
+
+    out = Path(tempfile.gettempdir()) / "agent-eval-openshell-policy.yaml"
+    out.write_text(yaml.safe_dump(doc, sort_keys=False))
+    logger.info(
+        "Eval policy %s augmented with model endpoint(s) %s -> %s",
+        policy_file,
+        ", ".join(f"{e['host']}:{e['port']}" for e in added),
+        out,
+    )
+    return out
 
 
 @dataclass
@@ -105,6 +181,7 @@ class OpenShellSandbox:
             policy_file = bundled_eval_policy()
             if policy_file is not None:
                 logger.info("Using bundled OpenShell eval policy %s", policy_file)
+        policy_file = effective_eval_policy(policy_file)
         return cls(
             gateway_endpoint=os.environ.get(
                 "OPENSHELL_GATEWAY_ENDPOINT", "https://127.0.0.1:17670"

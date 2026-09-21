@@ -91,35 +91,27 @@ network_policies:
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
-  # In-cluster LiteLLM (OpenClaw openai-completions; cluster Forge evals)
+  # In-cluster LiteLLM (OpenClaw openai-completions; cluster Forge evals).
+  #
+  # Do not list deployment namespaces here: an entry like
+  # litellm.<namespace>.svc.cluster.local only ever works for the namespace it
+  # names, and a sandbox anywhere else is denied its own model endpoint. The
+  # harness appends the endpoint it is actually configured with at sandbox
+  # creation (see agent_eval/openshell/sandbox.py), so this rule only needs the
+  # binaries that dial out.
   litellm_cluster:
     name: litellm-cluster
-    endpoints:
-      - host: litellm.ab-eval-flow.svc.cluster.local
-        port: 4000
-        protocol: rest
-        access: full
-      - host: litellm.gz-forge-eval.svc.cluster.local
-        port: 4000
-        protocol: rest
-        access: full
+    endpoints: []
     binaries:
       - path: /usr/bin/node
       - path: /usr/local/bin/node
       - path: /usr/local/bin/openclaw
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
+  # Short Service form of the same endpoint; also filled in at sandbox creation.
   litellm_cluster_short:
     name: litellm-cluster-short
-    endpoints:
-      - host: litellm.ab-eval-flow.svc
-        port: 4000
-        protocol: rest
-        access: full
-      - host: litellm.gz-forge-eval.svc
-        port: 4000
-        protocol: rest
-        access: full
+    endpoints: []
     binaries:
       - path: /usr/bin/node
       - path: /usr/local/bin/node
@@ -127,6 +119,8 @@ network_policies:
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
   # Namespace-local Forge AI gateway used by the OpenClaw model provider.
+  # The host below is one deployment's; the harness appends the configured
+  # endpoint at sandbox creation, so other namespaces do not need an edit here.
   forge_ai_gateway:
     name: forge-ai-gateway
     endpoints:

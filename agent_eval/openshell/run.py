@@ -265,6 +265,23 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
         base_url = _resolve_provider_value(
             raw_base, "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"
         )
+        # Let a deployment force every model call at one endpoint. A cluster
+        # install needs this: submissions ship ``https://inference.local/v1``
+        # (the gateway's cluster-inference relay), but the relay accepts only
+        # builtin provider types and, for type ``openai``, dials api.openai.com
+        # whatever ``base_url`` says — so a namespace-local LiteLLM cannot be
+        # reached through it.
+        override = os.environ.get("AGENT_EVAL_MODEL_BASE_URL", "").strip()
+        if override:
+            if base_url and base_url != override:
+                logger.info(
+                    "Provider %s baseUrl overridden by "
+                    "AGENT_EVAL_MODEL_BASE_URL: %s -> %s",
+                    name,
+                    base_url,
+                    override,
+                )
+            base_url = override
         if "inference.local" not in base_url:
             base_url = _openai_compat_base_url(base_url)
         api_key = (

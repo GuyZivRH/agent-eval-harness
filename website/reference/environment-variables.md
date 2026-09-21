@@ -145,6 +145,7 @@ Landlock filesystem and network egress control.
 | `AGENT_EVAL_OPENSHELL_IMAGE` | *(none)* | Container image with OpenClaw pre-installed (required). |
 | `AGENT_EVAL_OPENSHELL_POLICY` | *(none)* | Path to OpenShell policy YAML file. |
 | `AGENT_EVAL_OPENSHELL_PROVIDER` | *(none)* | OpenShell provider name for model authentication (e.g. `anthropic`). |
+| `AGENT_EVAL_MODEL_BASE_URL` | *(none)* | Overrides every provider `baseUrl` in the eval config, and is added to the sandbox network policy. Use it when the submission ships a relay URL (`https://inference.local/v1`) that the deployment cannot route — for example a namespace-local LiteLLM. |
 | `AGENT_EVAL_OPENSHELL_KEEP_RUN` | *(off)* | Set to `1` to keep sandboxes after trial for `openshell sandbox connect` debugging. |
 
 API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) are forwarded to the
