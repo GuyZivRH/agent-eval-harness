@@ -1145,22 +1145,14 @@ async def _run_case(
         try:
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
+            forge_image = os.environ.get("AGENT_EVAL_OPENSHELL_WORKSPACE") == "forge-image"
+            if forge_image:
+                from agent_eval.openshell.forge import prepare_forge_sandbox
 
-            image_paths = await sandbox.exec(
-                name,
-                [
-                    "sh",
-                    "-c",
-                    "cat /tmp/forge-launcher.log 2>/dev/null || true; "
-                    "for p in /sandbox/persist/agent-workspace/AGENTS.md "
-                    "/sandbox/persist/agent-workspace/IDENTITY.md "
-                    "/sandbox/persist/agent-workspace/CLAW.md; do "
-                    "if test -s \"$p\"; then echo \"present $p\"; else echo \"missing $p\"; fi; done; "
-                    "find /sandbox/persist/agent-workspace -maxdepth 6 -type f -name SKILL.md "
-                    "-print 2>/dev/null | sort | head -100",
-                ],
-            )
-            logger.info("Image workspace paths for %s:\n%s", case_id, image_paths.stdout.strip())
+                ca_file = os.environ.get("AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE", "")
+                if not ca_file:
+                    raise ValueError("Forge image workspace requires AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE")
+                await prepare_forge_sandbox(sandbox, name, Path(ca_file))
 
             # Upload files individually. OpenShell nests directory uploads at
             # the destination (for example, uploading ``skills`` to
@@ -1183,34 +1175,9 @@ async def _run_case(
                 if exists.return_code == 0:
                     logger.info("Preserving image-provided workspace path %s", remote_path)
                     continue
-                await sandbox.upload(name, entry, remote_path)
+                # CLI upload's destination is a directory, not a filename.
+                await sandbox.upload(name, entry, str(Path(remote_path).parent))
 
-            # Verify the files that were staged are actually visible inside the
-            # sandbox before invoking the agent.  OpenShell uploads and
-            # OpenClaw's workspace are separate layers; a successful upload
-            # request alone does not prove that the agent can read the file.
-            # Persona instructions and skills come exclusively from the
-            # published OpenClaw SAW image. AEH supplies only case data and
-            # supporting resources, so there is no AEH workspace bootstrap
-            # file to validate here.
-            required_workspace_files = []
-            workspace_preflight_results = []
-            for _relative_path, sandbox_path in required_workspace_files:
-                probe = await sandbox.exec(
-                    name,
-                    ["sh", "-c", f"test -s {shlex.quote(sandbox_path)}"],
-                )
-                if probe.return_code != 0:
-                    raise RuntimeError(
-                        f"Workspace preflight failed for {case_id}: required file "
-                        f"{sandbox_path} is missing or empty inside the sandbox"
-                    )
-                workspace_preflight_results.append(sandbox_path)
-            logger.info(
-                "Workspace preflight passed for %s: %s",
-                case_id,
-                ", ".join(workspace_preflight_results),
-            )
 
             input_yaml_path = staged_case / "input.yaml"
             if input_yaml_path.exists():
@@ -1293,10 +1260,17 @@ async def _run_case(
             # Build env to forward to sandbox (API keys + config env + M365_*)
             sandbox_env = _sandbox_env(config)
             sandbox_env.update({k: v for k, v in sandbox_env_extra.items() if v})
-            await _stage_forge_ai_gateway_ca(sandbox, name, sandbox_env)
-            await _install_m365_file_auth(sandbox, name, sandbox_env)
+            if forge_image:
+                # This profile uses supervisor-injected provider placeholders,
+                # not raw orchestrator credentials or AEH-created tool wrappers.
+                for key in ("OPENAI_API_KEY", "M365_ACCESS_TOKEN", "M365_CLIENT_SECRET"):
+                    sandbox_env.pop(key, None)
+            else:
+                await _stage_forge_ai_gateway_ca(sandbox, name, sandbox_env)
+                await _install_m365_file_auth(sandbox, name, sandbox_env)
 
             # Build command based on runner type
+            openclaw_model = model
             # Default depends on whether providers are configured (OpenClaw) or not (Claude Code)
             if hasattr(config.runner, 'type') and config.runner.type:
                 runner_type = config.runner.type

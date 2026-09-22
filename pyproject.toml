@@ -67,3 +67,6 @@ markers = [
 
 [tool.setuptools.packages.find]
 include = ["agent_eval*"]
+
+[tool.setuptools.package-data]
+"agent_eval.openshell" = ["*.mjs"]

@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -294,13 +295,17 @@ class TestRunCaseEnvForwarding:
             exec_result.stdout = json.dumps({"ok": True})
             exec_result.stderr = ""
             exec_result.return_code = 0
-            sandbox.exec = AsyncMock(return_value=exec_result)
+            async def fake_exec(_name, command, **kwargs):
+                if command[:2] == ["sh", "-c"] and command[2].startswith("test -e "):
+                    return SimpleNamespace(return_code=1, stdout="", stderr="")
+                return exec_result
+            sandbox.exec = AsyncMock(side_effect=fake_exec)
             
             async def run_test():
                 sem = asyncio.Semaphore(1)
                 await _run_case(
                     sandbox, config, staged_case, "model", "image:v1",
-                    output_dir, sem, keep=False,
+                    output_dir, sem, keep=False, scene_active=True,
                 )
             
             asyncio.run(run_test())
@@ -313,7 +318,7 @@ class TestRunCaseEnvForwarding:
             sandbox.upload.assert_awaited_once_with(
                 sandbox.create.call_args.args[0],
                 staged_case / "input.yaml",
-                "/sandbox/input.yaml",
+                "/sandbox",
             )
         finally:
             os.environ.pop("ANTHROPIC_API_KEY", None)
@@ -364,7 +369,7 @@ class TestRunCaseEnvForwarding:
             sem = asyncio.Semaphore(1)
             await _run_case(
                 sandbox, config, staged_case, "model", "image:v1",
-                output_dir, sem, keep=False,
+                output_dir, sem, keep=False, scene_active=True,
             )
 
         asyncio.run(run_test())
@@ -421,7 +426,7 @@ class TestRunCasePromptResolution:
             sem = asyncio.Semaphore(1)
             await _run_case(
                 sandbox, config, staged_case, "model", "image:v1",
-                output_dir, sem, keep=False,
+                output_dir, sem, keep=False, scene_active=True,
             )
         
         asyncio.run(run_test())
