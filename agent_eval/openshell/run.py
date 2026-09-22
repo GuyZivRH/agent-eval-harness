@@ -1104,6 +1104,20 @@ async def run_openshell(
     return 0
 
 
+async def _openclaw_output_present(sandbox: OpenShellSandbox, name: str) -> bool:
+    """Skip only a confirmed absent optional output; retain other failures."""
+    probe = await sandbox.exec(name, [
+        "node", "-e",
+        "try { require('node:fs').statSync('/sandbox/output'); } "
+        "catch (e) { process.exit(e.code === 'ENOENT' ? 3 : 2); }",
+    ])
+    if probe.return_code == 3:
+        logger.info("No optional /sandbox/output in %s; collecting OpenClaw response from stdout", name)
+        return False
+    # Permission/probe errors must still reach download's normal diagnostics.
+    return True
+
+
 async def _run_case(
     sandbox: OpenShellSandbox,
     config: EvalConfig,
@@ -1430,6 +1444,12 @@ async def _run_case(
 
             for output in config.outputs or []:
                 if output.path:
+                    # OpenClaw's response is collected from stdout below. Its
+                    # conventional output directory is optional, unlike other
+                    # explicitly requested artifacts.
+                    if runner_type == "openclaw" and output.path == "output":
+                        if not await _openclaw_output_present(sandbox, name):
+                            continue
                     try:
                         await sandbox.download(
                             name, f"/sandbox/{output.path}", staged_case / output.path
@@ -1438,7 +1458,8 @@ async def _run_case(
                         # OpenClaw prompt cases often never create /sandbox/output;
                         # AEH writes response.txt from the exec envelope on the host.
                         err = str(e)
-                        if "No such file or directory" in err or "failed to resolve" in err:
+                        if (runner_type == "openclaw" and output.path == "output"
+                                and "No such file or directory" in err):
                             logger.info(
                                 "No sandbox %s to download for %s (ok for openclaw)",
                                 output.path,

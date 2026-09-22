@@ -28,6 +28,16 @@ from agent_eval.openshell.run import (
 )
 
 
+@pytest.mark.parametrize("code,expected", [(0, True), (3, False), (2, True), (127, True)])
+def test_optional_openclaw_output_probe(code, expected):
+    import asyncio
+    from agent_eval.openshell.run import _openclaw_output_present
+
+    sandbox = SimpleNamespace(exec=AsyncMock(return_value=SimpleNamespace(return_code=code)))
+    assert asyncio.run(_openclaw_output_present(sandbox, "test-sandbox")) is expected
+    assert sandbox.exec.call_args.args[0] == "test-sandbox"
+
+
 class TestChildEnv:
     """Tests for _child_env (bootstrap sentinel stripping)."""
 
