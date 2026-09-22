@@ -168,6 +168,17 @@ class TestParseOpenclawToCaseDict:
         assert result["exit_code"] == 1
         assert extract_openclaw_response(stdout) == ""
 
+    def test_timeout_final_is_not_an_agent_response(self):
+        from agent_eval.agent.openclaw import extract_openclaw_response
+        stdout = json.dumps({
+            "ok": False, "status": "timeout",
+            "final": "Request timed out before a response was generated.",
+        }).encode()
+        result = parse_openclaw_to_case_dict(stdout, b"", 2, 900.0)
+        assert result["response_text"] == ""
+        assert result["exit_code"] == 2
+        assert extract_openclaw_response(stdout) == ""
+
     def test_parse_success_to_dict(self):
         stdout = json.dumps({
             "costUsd": 0.10,
