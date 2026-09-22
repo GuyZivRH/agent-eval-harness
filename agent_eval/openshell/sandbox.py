@@ -14,18 +14,13 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Keep the sandbox alive while the runner performs the non-interactive SAW
-# onboarding step after creation. Invoking start-agent as the main process
-# makes provisioning fail because the image's onboarding path expects a TTY.
-# The SAW agent image's launcher stages the Chief-of-Staff workspace and
-# governed image skills before starting the OpenClaw gateway. Do not replace
-# that entrypoint with `sleep infinity`, or the agent bundle never reaches the
-# sandbox workspace.
+# Keep provisioning separate from the agent invocation. Forge's interactive
+# launcher needs deployment-specific runtime files; invoking it here used to
+# hide failures behind a sleep and leave the workspace uninitialized.
 CREATE_KEEPALIVE: List[str] = [
-    "sh",
+    "/bin/sh",
     "-c",
-    "sh /opt/forge/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
-    "{ cat /tmp/forge-launcher.log >&2; sleep infinity; }",
+    "trap 'exit 0' TERM INT; while :; do sleep 1; done",
 ]
 
 # Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
@@ -122,15 +117,9 @@ class OpenShellSandbox:
         in CI when one was registered; keep endpoint mode for local/default use.
         """
         gateway_name = os.environ.get("OPENSHELL_GATEWAY_NAME", "").strip()
-        gateway_endpoint = self.gateway
-        if "openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local" in gateway_endpoint:
-            gateway_endpoint = "https://127.0.0.1:17671"
-        # A namespace-local TLS bridge terminates the CLI connection on
-        # localhost and presents the deployment client certificate upstream.
-        # Do not let a stale named profile replace that endpoint.
-        if gateway_name and gateway_endpoint == self.gateway and not gateway_endpoint.startswith(("https://127.0.0.1:", "http://127.0.0.1:")):
+        if gateway_name:
             return ["openshell", "-g", gateway_name]
-        return ["openshell", "--gateway-endpoint", gateway_endpoint]
+        return ["openshell", "--gateway-endpoint", self.gateway]
 
     async def create(self, name: str, image: str) -> str:
         """Create sandbox and wait until Ready.
@@ -197,6 +186,14 @@ class OpenShellSandbox:
         """
         cmd = self._base_cmd() + ["sandbox", "upload", name, str(local), remote]
         await self._run(cmd, operation=f"sandbox upload name={name} remote={remote}")
+
+    async def restart(self, name: str) -> None:
+        """Reload supervisor startup trust after staging image runtime files."""
+        for operation in ("stop", "start"):
+            await self._run(
+                self._base_cmd() + ["sandbox", operation, name],
+                operation=f"sandbox {operation} name={name}",
+            )
 
     async def download(self, name: str, remote: str, local: Path) -> None:
         """Download file or directory from sandbox.

@@ -73,6 +73,22 @@ class TestOpenShellSandbox:
         
         assert cmd == ["openshell", "--gateway-endpoint", "https://localhost:1234"]
 
+    @pytest.mark.parametrize("endpoint", [
+        "https://openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local:17670",
+        "https://127.0.0.1:17671",
+        "https://host.containers.internal:17670",
+    ])
+    def test_named_profile_preserves_mtls(self, monkeypatch, endpoint):
+        monkeypatch.setenv("OPENSHELL_GATEWAY_NAME", "ci-gateway")
+        sandbox = OpenShellSandbox(gateway_endpoint=endpoint)
+        assert sandbox._base_cmd() == ["openshell", "-g", "ci-gateway"]
+
+    def test_endpoint_is_never_rewritten(self, monkeypatch):
+        monkeypatch.delenv("OPENSHELL_GATEWAY_NAME", raising=False)
+        endpoint = "https://openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local:17670"
+        sandbox = OpenShellSandbox(gateway_endpoint=endpoint)
+        assert sandbox._base_cmd() == ["openshell", "--gateway-endpoint", endpoint]
+
 
 class TestOpenShellSandboxCreate:
     """Tests for sandbox create operation."""
@@ -100,11 +116,11 @@ class TestOpenShellSandboxCreate:
             assert "--no-auto-providers" in cmd
             assert "--detach" in cmd
             assert "--" in cmd
-            assert "sh /app/start-governed-forwarders.sh" in " ".join(cmd)
+            assert cmd[-3:] == CREATE_KEEPALIVE
         
         run_async(_test())
 
-    def test_create_preserves_image_entrypoint(self):
+    def test_create_waits_for_explicit_provisioning(self):
         sandbox = OpenShellSandbox(gateway_endpoint="https://gw:1234")
 
         async def _test():
@@ -115,10 +131,9 @@ class TestOpenShellSandboxCreate:
             assert "--detach" in cmd
             assert "--" in cmd
             assert CREATE_KEEPALIVE == [
-                "sh",
+                "/bin/sh",
                 "-c",
-                "sh /app/start-governed-forwarders.sh > /tmp/forge-launcher.log 2>&1 || "
-                "{ cat /tmp/forge-launcher.log >&2; sleep infinity; }",
+                "trap 'exit 0' TERM INT; while :; do sleep 1; done",
             ]
 
         run_async(_test())
