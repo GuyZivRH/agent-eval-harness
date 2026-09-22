@@ -388,9 +388,19 @@ def main():
         per_case = summary.get("per_case", {})
         if per_case:
             table_rows = []
+            token_rows = []
             for case_id, case_results in per_case.items():
                 if not isinstance(case_results, dict):
                     continue
+                usage = case_results.get("token_usage", {})
+                if isinstance(usage, dict) and usage:
+                    token_rows.append({
+                        "case_id": case_id,
+                        "input": usage.get("input", 0),
+                        "output": usage.get("output", 0),
+                        "cache_read": usage.get("cache_read", 0),
+                        "cache_create": usage.get("cache_create", 0),
+                    })
                 for judge_name, result in case_results.items():
                     if not isinstance(result, dict):
                         continue
@@ -405,6 +415,10 @@ def main():
                 for key in table_rows[0]:
                     columns[key] = [row[key] for row in table_rows]
                 mlflow.log_table(columns, artifact_file="per_case_results.json")
+            if token_rows:
+                columns = {key: [row[key] for row in token_rows]
+                           for key in token_rows[0]}
+                mlflow.log_table(columns, artifact_file="per_case_tokens.json")
 
     # ── Find existing execution traces ────────────────────────────
     # Execution traces are created during skill execution by the trace
