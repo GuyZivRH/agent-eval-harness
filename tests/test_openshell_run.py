@@ -280,6 +280,10 @@ class TestRunCaseEnvForwarding:
             staged_case = tmp_path / "cases" / "case-001"
             staged_case.mkdir(parents=True)
             (staged_case / "input.yaml").write_text(yaml.safe_dump({}))
+            # The local staging repo is not agent input and may conflict with
+            # an image-owned .git file (e.g. a packaged workspace checkout).
+            (staged_case / ".git" / "hooks").mkdir(parents=True)
+            (staged_case / ".git" / "hooks" / "sample").write_text("local-only")
             
             output_dir = tmp_path / "output"
             output_dir.mkdir()

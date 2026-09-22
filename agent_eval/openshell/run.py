@@ -1159,7 +1159,8 @@ async def _run_case(
             # /sandbox/skills can produce /sandbox/skills/skills), so
             # directory-level uploads break OpenClaw's literal paths.
             for entry in sorted(
-                (path for path in staged_case.rglob("*") if path.is_file()),
+                (path for path in staged_case.rglob("*")
+                 if path.is_file() and ".git" not in path.relative_to(staged_case).parts),
                 key=lambda path: str(path.relative_to(staged_case)),
             ):
                 relative = entry.relative_to(staged_case)
