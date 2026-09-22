@@ -69,6 +69,40 @@ def test_llm_preflight_resolves_environment_reference_in_memory(tmp_path, monkey
     assert path.read_text() == original
 
 
+@pytest.mark.parametrize("code,error", [
+    (124, "timeout"),
+    (1, "LLM_PREFLIGHT_FAILED This operation was aborted"),
+    (1, "LLM_PREFLIGHT_FAILED HTTP 504 upstream timeout"),
+])
+def test_preflight_retries_one_transient_failure(code, error):
+    import asyncio
+    from agent_eval.openshell.run import _run_openclaw_llm_preflight
+    sandbox = SimpleNamespace(exec=AsyncMock(side_effect=[
+        SimpleNamespace(return_code=code, stdout="", stderr=error),
+        SimpleNamespace(return_code=0, stdout="LLM_PREFLIGHT_OK", stderr=""),
+    ]))
+    with patch("agent_eval.openshell.run.asyncio.sleep", new_callable=AsyncMock):
+        asyncio.run(_run_openclaw_llm_preflight(sandbox, "probe", Path("config"), "inference/glm"))
+    assert sandbox.exec.call_count == 2
+
+
+@pytest.mark.parametrize("error,count", [
+    ("LLM_PREFLIGHT_FAILED HTTP 401 unauthorized", 1),
+    ("LLM_PREFLIGHT_FAILED HTTP 400 invalid model", 1),
+    ("LLM_PREFLIGHT_FAILED empty model response", 1),
+    ("LLM_PREFLIGHT_FAILED HTTP 503 unavailable", 2),
+])
+def test_preflight_retry_is_bounded_and_not_for_auth_or_config(error, count):
+    import asyncio
+    from agent_eval.openshell.run import _run_openclaw_llm_preflight
+    sandbox = SimpleNamespace(exec=AsyncMock(return_value=SimpleNamespace(
+        return_code=1, stdout="", stderr=error)))
+    with patch("agent_eval.openshell.run.asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(RuntimeError, match="preflight failed"):
+            asyncio.run(_run_openclaw_llm_preflight(sandbox, "probe", Path("config"), "inference/glm"))
+    assert sandbox.exec.call_count == count
+
+
 class TestChildEnv:
     """Tests for _child_env (bootstrap sentinel stripping)."""
 

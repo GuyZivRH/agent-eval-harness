@@ -325,7 +325,7 @@ async def _run_openclaw_llm_preflight(
     config_path: Path,
     qualified_model: str,
 ) -> None:
-    """Make one minimal provider call inside the sandbox before the case.
+    """Make a minimal provider call, retrying one transient failure.
 
     This intentionally uses the same OpenClaw provider configuration that the
     case will use, but calls the OpenAI-compatible endpoint directly.  It
@@ -368,19 +368,33 @@ async def _run_openclaw_llm_preflight(
         provider,
         model_id,
     )
-    result = await sandbox.exec(
-        sandbox_name,
-        ["node", "-e", script, str(config_path), provider, model_id],
-        workdir="/sandbox",
-        timeout_s=40,
-    )
-    output = ((result.stdout or "") + " " + (result.stderr or "")).strip()
-    if result.return_code:
-        raise RuntimeError(
-            f"In-sandbox LLM preflight failed for {qualified_model}: "
-            f"{output[:600]}"
+    for attempt in range(2):
+        result = await sandbox.exec(
+            sandbox_name,
+            ["node", "-e", script, str(config_path), provider, model_id],
+            workdir="/sandbox",
+            timeout_s=40,
         )
-    logger.info("In-sandbox LLM preflight passed: %s", output[:600])
+        output = ((result.stdout or "") + " " + (result.stderr or "")).strip()
+        if not result.return_code:
+            logger.info("In-sandbox LLM preflight passed: %s", output[:600])
+            return
+        transient = result.return_code == 124 or any(
+            marker in output for marker in (
+                "LLM_PREFLIGHT_FAILED This operation was aborted",
+                "LLM_PREFLIGHT_FAILED HTTP 429 ",
+                "LLM_PREFLIGHT_FAILED HTTP 502 ",
+                "LLM_PREFLIGHT_FAILED HTTP 503 ",
+                "LLM_PREFLIGHT_FAILED HTTP 504 ",
+            )
+        )
+        if attempt == 0 and transient:
+            logger.warning("Transient LLM preflight failure; retrying once for %s", qualified_model)
+            await asyncio.sleep(2)
+            continue
+        raise RuntimeError(
+            f"In-sandbox LLM preflight failed for {qualified_model}: {output[:600]}"
+        )
 
 
 def _child_env(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
