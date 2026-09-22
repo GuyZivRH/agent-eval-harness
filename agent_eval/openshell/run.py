@@ -1169,7 +1169,11 @@ async def _run_case(
                 ca_file = os.environ.get("AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE", "")
                 if not ca_file:
                     raise ValueError("Forge image workspace requires AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE")
-                await prepare_forge_sandbox(sandbox, name, Path(ca_file))
+                user_file = os.environ.get("AGENT_EVAL_FORGE_USER_FILE", "").strip()
+                await prepare_forge_sandbox(
+                    sandbox, name, Path(ca_file),
+                    user_file=Path(user_file) if user_file else None,
+                )
 
             # Upload files individually. OpenShell nests directory uploads at
             # the destination (for example, uploading ``skills`` to
