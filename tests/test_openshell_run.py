@@ -728,6 +728,26 @@ class TestOpenclawEvalConfig:
         assert inf["baseUrl"].endswith("/v1")
         assert inf["models"][0]["id"] == "claude-sonnet"
 
+    def test_preserves_declared_model_capabilities(self):
+        model = {
+            "id": "glm", "name": "GLM", "reasoning": True,
+            "maxTokens": 32768, "contextWindow": 131072,
+            "input": ["text"], "cost": {"input": 1, "output": 2},
+        }
+        providers = {"inference": {"baseUrl": "https://model.example/v1", "models": [model]}}
+        cfg, _ = build_openclaw_eval_config(providers, "inference/glm")
+        actual = cfg["models"]["providers"]["inference"]["models"][0]
+        for field, value in model.items():
+            assert actual[field] == value
+        assert model["maxTokens"] == 32768
+
+    def test_unspecified_model_capabilities_keep_defaults(self):
+        providers = {"inference": {"baseUrl": "https://model.example/v1", "models": [{"id": "plain"}]}}
+        cfg, _ = build_openclaw_eval_config(providers, "inference/plain")
+        actual = cfg["models"]["providers"]["inference"]["models"][0]
+        assert actual["maxTokens"] == 8192
+        assert actual["reasoning"] is False
+
     def test_preserves_private_network_provider_opt_in(self):
         providers = {
             "forge-ai-gateway": {

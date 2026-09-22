@@ -301,11 +301,16 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
             if not mid:
                 continue
             seen.add(mid)
-            provider_entry["models"].append(
-                _openclaw_model_catalog_entry(
-                    mid, m.get("name", mid), m.get("api") or api
-                )
+            entry = _openclaw_model_catalog_entry(
+                mid, m.get("name", mid), m.get("api") or api
             )
+            # Respect the declared model capabilities. Replacing reasoning
+            # and output limits silently can exhaust the entire completion
+            # budget before a reasoning model produces its final answer.
+            for field in ("reasoning", "input", "cost", "contextWindow", "maxTokens"):
+                if field in m:
+                    entry[field] = m[field]
+            provider_entry["models"].append(entry)
         if name == provider_name and requested_id and requested_id not in seen:
             provider_entry["models"].append(
                 _openclaw_model_catalog_entry(requested_id, requested_id, api)
