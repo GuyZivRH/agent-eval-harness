@@ -184,6 +184,8 @@ def extract_openclaw_response(stdout: bytes) -> str:
     data, _ = _parse_openclaw_envelope(stdout, b"")
     if data is None:
         return ""
+    if data.get("ok") is False or data.get("status") in ("error", "timeout"):
+        return ""
     
     # Try meta.finalAssistantVisibleText first (most reliable)
     meta = data.get("meta", {})
@@ -192,7 +194,7 @@ def extract_openclaw_response(stdout: bytes) -> str:
     
     # Fall back to payloads[0].text
     payloads = data.get("payloads", [])
-    if payloads and payloads[0].get("text"):
+    if payloads and payloads[0].get("text") and not payloads[0].get("isError"):
         return payloads[0]["text"]
     
     return ""
@@ -238,8 +240,10 @@ def parse_openclaw_to_case_dict(
     response_text = meta.get("finalAssistantVisibleText", "") or data.get("final", "")
     if not response_text:
         payloads = data.get("payloads", [])
-        if payloads and payloads[0].get("text"):
+        if payloads and payloads[0].get("text") and not payloads[0].get("isError"):
             response_text = payloads[0]["text"]
+    if data.get("ok") is False or data.get("status") in ("error", "timeout"):
+        response_text = ""
 
     # Token usage: top-level (agent exec) → agentMeta → estimates
     usage = (

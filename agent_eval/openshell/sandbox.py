@@ -14,6 +14,26 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Keep provisioning separate from the agent invocation. Forge's interactive
+# launcher needs deployment-specific runtime files; invoking it here used to
+# hide failures behind a sleep and leave the workspace uninitialized.
+CREATE_KEEPALIVE: List[str] = [
+    "/bin/sh",
+    "-c",
+    "trap 'exit 0' TERM INT; while :; do sleep 1; done",
+]
+
+# Quay OpenClaw lives under /opt/openclaw. Default OpenShell Landlock omits
+# that tree, so exec of the ``openclaw`` shebang returns 126 (EACCES).
+_BUNDLED_EVAL_POLICY = (
+    Path(__file__).resolve().parents[2] / "deploy" / "openshell" / "eval-policy.yaml"
+)
+
+
+def bundled_eval_policy() -> Optional[Path]:
+    """Return the repo eval-policy.yaml if present (allows /opt/openclaw)."""
+    return _BUNDLED_EVAL_POLICY if _BUNDLED_EVAL_POLICY.is_file() else None
+
 
 @dataclass
 class ExecResult:
@@ -63,27 +83,50 @@ class OpenShellSandbox:
 
         Environment variables:
             OPENSHELL_GATEWAY_ENDPOINT: Gateway URL (default: https://127.0.0.1:17670)
-            AGENT_EVAL_OPENSHELL_POLICY: Path to policy YAML
+            OPENSHELL_GATEWAY_NAME: Optional registered gateway profile. When set,
+                use the profile so the CLI loads its OIDC and mTLS credentials.
+            AGENT_EVAL_OPENSHELL_POLICY: Path to policy YAML. When unset, uses
+                ``deploy/openshell/eval-policy.yaml`` so Quay OpenClaw under
+                ``/opt/openclaw`` is readable (otherwise ``openclaw`` exits 126).
             AGENT_EVAL_OPENSHELL_PROVIDER: Provider name for auth
 
         Returns:
             Configured OpenShellSandbox instance.
         """
-        policy_path = os.environ.get("AGENT_EVAL_OPENSHELL_POLICY")
+        env_policy = os.environ.get("AGENT_EVAL_OPENSHELL_POLICY", "").strip()
+        if env_policy:
+            policy_file = Path(env_policy)
+        else:
+            policy_file = bundled_eval_policy()
+            if policy_file is not None:
+                logger.info("Using bundled OpenShell eval policy %s", policy_file)
         return cls(
             gateway_endpoint=os.environ.get(
                 "OPENSHELL_GATEWAY_ENDPOINT", "https://127.0.0.1:17670"
             ),
-            policy_file=Path(policy_path) if policy_path else None,
+            policy_file=policy_file,
             provider=os.environ.get("AGENT_EVAL_OPENSHELL_PROVIDER"),
         )
 
     def _base_cmd(self) -> List[str]:
-        """Base command with gateway endpoint."""
+        """Base command selecting the configured gateway profile or endpoint.
+
+        A direct ``--gateway-endpoint`` bypasses the CLI gateway profile. That
+        also bypasses the profile's mTLS bundle, which is required when the
+        remote gateway requests a client certificate. Prefer the named profile
+        in CI when one was registered; keep endpoint mode for local/default use.
+        """
+        gateway_name = os.environ.get("OPENSHELL_GATEWAY_NAME", "").strip()
+        if gateway_name:
+            return ["openshell", "-g", gateway_name]
         return ["openshell", "--gateway-endpoint", self.gateway]
 
     async def create(self, name: str, image: str) -> str:
         """Create sandbox and wait until Ready.
+
+        The create command uses ``--detach`` plus a long-lived keep-alive so the
+        sandbox main process stays up. On Kubernetes (restartPolicy Never) a
+        short-lived command such as ``echo`` makes the pod Failed.
 
         Args:
             name: Unique sandbox name.
@@ -104,13 +147,28 @@ class OpenShellSandbox:
             image,
             "--no-tty",
             "--no-auto-providers",
+            "--detach",
         ]
         if self.policy:
             cmd.extend(["--policy", str(self.policy)])
         if self.provider:
-            cmd.extend(["--provider", self.provider])
-        cmd.extend(["--", "echo", "sandbox ready"])
-        await self._run(cmd)
+            # The SAW agent image requires several capability providers in
+            # addition to its model route. Accept a comma-separated value so
+            # the pipeline can attach the complete deployment contract.
+            for provider in (item.strip() for item in self.provider.split(",")):
+                if provider:
+                    cmd.extend(["--provider", provider])
+        if CREATE_KEEPALIVE:
+            cmd.extend(["--"] + CREATE_KEEPALIVE)
+        logger.info(
+            "OpenShell sandbox create requested name=%s gateway=%s provider=%s image=%s policy=%s",
+            name,
+            self.gateway,
+            self.provider or "<none>",
+            image,
+            self.policy or "<none>",
+        )
+        await self._run(cmd, operation=f"sandbox create name={name}")
         return name
 
     async def upload(self, name: str, local: Path, remote: str) -> None:
@@ -127,7 +185,15 @@ class OpenShellSandbox:
             RuntimeError: If upload fails.
         """
         cmd = self._base_cmd() + ["sandbox", "upload", name, str(local), remote]
-        await self._run(cmd)
+        await self._run(cmd, operation=f"sandbox upload name={name} remote={remote}")
+
+    async def restart(self, name: str) -> None:
+        """Reload supervisor startup trust after staging image runtime files."""
+        for operation in ("stop", "start"):
+            await self._run(
+                self._base_cmd() + ["sandbox", operation, name],
+                operation=f"sandbox {operation} name={name}",
+            )
 
     async def download(self, name: str, remote: str, local: Path) -> None:
         """Download file or directory from sandbox.
@@ -142,7 +208,7 @@ class OpenShellSandbox:
         """
         local.parent.mkdir(parents=True, exist_ok=True)
         cmd = self._base_cmd() + ["sandbox", "download", name, remote, str(local)]
-        await self._run(cmd)
+        await self._run(cmd, operation=f"sandbox download name={name} remote={remote}")
 
     async def exec(
         self,
@@ -212,7 +278,9 @@ class OpenShellSandbox:
         except Exception as e:
             logger.debug(f"Sandbox delete failed (may already be gone): {e}")
 
-    async def _run(self, cmd: List[str], check: bool = True) -> str:
+    async def _run(
+        self, cmd: List[str], check: bool = True, operation: str = "openshell command"
+    ) -> str:
         """Run OpenShell CLI command.
 
         Args:
@@ -228,6 +296,13 @@ class OpenShellSandbox:
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=PIPE, stderr=PIPE)
         stdout, stderr = await proc.communicate()
         if check and proc.returncode != 0:
+            logger.error(
+                "OpenShell operation failed operation=%s rc=%s stdout=%s stderr=%s",
+                operation,
+                proc.returncode,
+                stdout.decode(errors="replace")[-2000:],
+                stderr.decode(errors="replace")[-4000:],
+            )
             raise RuntimeError(
                 f"OpenShell command failed: {' '.join(cmd)}\n{stderr.decode()}"
             )

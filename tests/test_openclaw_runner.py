@@ -157,6 +157,28 @@ class TestParseOpenclawEnvelope:
 class TestParseOpenclawToCaseDict:
     """Tests for case dict parsing (openshell backend)."""
 
+    def test_error_payload_is_not_an_agent_response(self):
+        from agent_eval.agent.openclaw import extract_openclaw_response
+        stdout = json.dumps({
+            "ok": False, "status": "error", "final": "",
+            "payloads": [{"text": "LLM request failed: network connection error.", "isError": True}],
+        }).encode()
+        result = parse_openclaw_to_case_dict(stdout, b"connection error", 1, 3.0)
+        assert result["response_text"] == ""
+        assert result["exit_code"] == 1
+        assert extract_openclaw_response(stdout) == ""
+
+    def test_timeout_final_is_not_an_agent_response(self):
+        from agent_eval.agent.openclaw import extract_openclaw_response
+        stdout = json.dumps({
+            "ok": False, "status": "timeout",
+            "final": "Request timed out before a response was generated.",
+        }).encode()
+        result = parse_openclaw_to_case_dict(stdout, b"", 2, 900.0)
+        assert result["response_text"] == ""
+        assert result["exit_code"] == 2
+        assert extract_openclaw_response(stdout) == ""
+
     def test_parse_success_to_dict(self):
         stdout = json.dumps({
             "costUsd": 0.10,
@@ -258,7 +280,8 @@ class TestOpenClawRunner:
         
         assert result.exit_code == 0
         assert result.cost_usd == 0.01
-        assert captured["input"] == b"What is 2+2?"
+        assert captured["input"] is None
+        assert captured["command"][-1] == "What is 2+2?"
         assert "openclaw" in captured["command"]
         assert "--model" in captured["command"]
         assert "claude-sonnet" in captured["command"]
@@ -283,7 +306,8 @@ class TestOpenClawRunner:
         runner = OpenClawRunner()
         runner.execute("my-skill", "arg1 arg2", workspace, "model")
         
-        assert captured["input"] == b"/my-skill arg1 arg2"
+        assert captured["input"] is None
+        assert captured["command"][-1] == "/my-skill arg1 arg2"
 
     def test_execute_skill_mode_no_args(self, tmp_path, monkeypatch):
         captured = {}
@@ -316,10 +340,11 @@ class TestOpenClawRunner:
         
         monkeypatch.setattr(
             "agent_eval.agent.openclaw.subprocess.Popen",
-            lambda cmd, **kw: FP())
+            lambda cmd, **kw: (captured.update(command=cmd), FP())[1])
         
         runner.execute("my-skill", "", workspace, "model")
-        assert captured["input"] == b"/my-skill"
+        assert captured["input"] is None
+        assert captured["command"][-1] == "/my-skill"
 
     def test_warns_on_non_default_budget(self, tmp_path, monkeypatch):
         class FakeProcess:

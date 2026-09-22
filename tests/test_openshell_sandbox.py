@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_eval.openshell.sandbox import ExecResult, OpenShellSandbox
+from agent_eval.openshell.sandbox import (
+    CREATE_KEEPALIVE,
+    ExecResult,
+    OpenShellSandbox,
+    bundled_eval_policy,
+)
 
 
 def run_async(coro):
@@ -25,8 +30,31 @@ class TestOpenShellSandbox:
         sandbox = OpenShellSandbox.from_env()
 
         assert sandbox.gateway == "https://127.0.0.1:17670"
-        assert sandbox.policy is None
+        assert sandbox.policy == bundled_eval_policy()
+        assert sandbox.policy is not None
+        assert sandbox.policy.name == "eval-policy.yaml"
         assert sandbox.provider is None
+
+    def test_from_env_empty_policy_uses_bundled(self, monkeypatch):
+        monkeypatch.setenv("AGENT_EVAL_OPENSHELL_POLICY", "  ")
+        sandbox = OpenShellSandbox.from_env()
+        assert sandbox.policy == bundled_eval_policy()
+
+    def test_bundled_eval_policy_allows_opt_openclaw(self):
+        path = bundled_eval_policy()
+        assert path is not None
+        text = path.read_text()
+        assert "/opt/openclaw" in text
+
+    def test_bundled_eval_policy_allows_microsoft_graph(self):
+        path = bundled_eval_policy()
+        assert path is not None
+        text = path.read_text()
+        assert "graph.microsoft.com" in text
+        assert "login.microsoftonline.com" in text
+        assert "/usr/bin/curl" in text
+        assert "litellm.ab-eval-flow.svc.cluster.local" in text
+        assert "inference.local" in text
 
     def test_from_env_with_values(self, monkeypatch):
         monkeypatch.setenv("OPENSHELL_GATEWAY_ENDPOINT", "https://gateway.example.com:8080")
@@ -44,6 +72,22 @@ class TestOpenShellSandbox:
         cmd = sandbox._base_cmd()
         
         assert cmd == ["openshell", "--gateway-endpoint", "https://localhost:1234"]
+
+    @pytest.mark.parametrize("endpoint", [
+        "https://openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local:17670",
+        "https://127.0.0.1:17671",
+        "https://host.containers.internal:17670",
+    ])
+    def test_named_profile_preserves_mtls(self, monkeypatch, endpoint):
+        monkeypatch.setenv("OPENSHELL_GATEWAY_NAME", "ci-gateway")
+        sandbox = OpenShellSandbox(gateway_endpoint=endpoint)
+        assert sandbox._base_cmd() == ["openshell", "-g", "ci-gateway"]
+
+    def test_endpoint_is_never_rewritten(self, monkeypatch):
+        monkeypatch.delenv("OPENSHELL_GATEWAY_NAME", raising=False)
+        endpoint = "https://openshell-saw-agent-gateway.gz-forge-eval.svc.cluster.local:17670"
+        sandbox = OpenShellSandbox(gateway_endpoint=endpoint)
+        assert sandbox._base_cmd() == ["openshell", "--gateway-endpoint", endpoint]
 
 
 class TestOpenShellSandboxCreate:
@@ -70,9 +114,28 @@ class TestOpenShellSandboxCreate:
             assert "quay.io/org/image:v1" in cmd
             assert "--no-tty" in cmd
             assert "--no-auto-providers" in cmd
+            assert "--detach" in cmd
             assert "--" in cmd
-            assert "echo" in cmd
+            assert cmd[-3:] == CREATE_KEEPALIVE
         
+        run_async(_test())
+
+    def test_create_waits_for_explicit_provisioning(self):
+        sandbox = OpenShellSandbox(gateway_endpoint="https://gw:1234")
+
+        async def _test():
+            with patch.object(sandbox, "_run", new_callable=AsyncMock) as mock_run:
+                await sandbox.create("test", "image:v1")
+
+            cmd = mock_run.call_args[0][0]
+            assert "--detach" in cmd
+            assert "--" in cmd
+            assert CREATE_KEEPALIVE == [
+                "/bin/sh",
+                "-c",
+                "trap 'exit 0' TERM INT; while :; do sleep 1; done",
+            ]
+
         run_async(_test())
 
     def test_create_with_policy(self):

@@ -213,6 +213,16 @@ def fetch_harness_snapshot(
         return None
 
     for mlflow_run_id in list(runs.run_id):
+        try:
+            artifacts = client.list_artifacts(mlflow_run_id)
+        except Exception as exc:
+            print(f"WARNING: list_artifacts failed for run {mlflow_run_id}: {exc}", file=sys.stderr)
+            continue
+        if not any(
+            artifact.path == HARNESS_SNAPSHOT_ARTIFACT and not artifact.is_dir
+            for artifact in artifacts
+        ):
+            continue
         with tempfile.TemporaryDirectory() as tmp:
             try:
                 local = client.download_artifacts(

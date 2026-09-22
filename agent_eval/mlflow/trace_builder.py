@@ -177,9 +177,140 @@ def _load_trajectory_reasoning(trajectory_path):
     return out
 
 
+def aeh_events_to_stream_events(aeh_events):
+    """Convert AEH flat ``events.json`` (OpenClaw harvest) to Claude stream-json.
+
+    OpenShell writes ``cases/<id>/events.json`` in the same flat schema as
+    ``parse_openclaw_session`` / ``parse_stream_events`` (``user``/``assistant``
+    with ``text``+``tools``, plus ``tool_result``). ``build_trace`` expects
+    Claude Code NDJSON (``message.content`` blocks). Without this conversion,
+    OpenClaw ``stdout.log`` (a pretty-printed ``agent exec`` envelope) yields
+    zero spans.
+    """
+    stream = []
+    if not isinstance(aeh_events, list):
+        return stream
+    for event in aeh_events:
+        if not isinstance(event, dict):
+            continue
+        etype = event.get("type")
+        ts = event.get("timestamp")
+        if etype == "user":
+            text = event.get("text") or ""
+            if not text and not ts:
+                continue
+            item = {
+                "type": "user",
+                "message": {"role": "user", "content": text},
+            }
+            if ts:
+                item["timestamp"] = ts
+            stream.append(item)
+        elif etype == "assistant":
+            content = []
+            thinking = event.get("thinking")
+            if isinstance(thinking, str) and thinking.strip():
+                content.append({"type": "thinking", "thinking": thinking})
+            text = event.get("text") or ""
+            if text:
+                content.append({"type": "text", "text": text})
+            for tool in event.get("tools") or []:
+                if not isinstance(tool, dict):
+                    continue
+                content.append({
+                    "type": "tool_use",
+                    "id": tool.get("id") or "",
+                    "name": tool.get("name") or "unknown",
+                    "input": tool.get("input") if isinstance(tool.get("input"), dict) else {},
+                })
+            item = {
+                "type": "assistant",
+                "message": {"role": "assistant", "content": content},
+            }
+            if ts:
+                item["timestamp"] = ts
+            parent = event.get("parent_tool_use_id")
+            if parent:
+                item["parent_tool_use_id"] = parent
+            stream.append(item)
+        elif etype == "tool_result":
+            item = {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": event.get("tool_use_id") or "",
+                        "content": event.get("result") or "",
+                        "is_error": bool(event.get("is_error")),
+                    }],
+                },
+            }
+            if ts:
+                item["timestamp"] = ts
+            stream.append(item)
+        elif etype == "system":
+            item = {k: v for k, v in event.items()}
+            stream.append(item)
+    return stream
+
+
+def load_openshell_stream_events(case_dir):
+    """Claude stream-json events from harvested OpenClaw case artifacts.
+
+    Preference: ``events.json`` (AEH flat schema) → ``openclaw-trajectory-events.jsonl``.
+    OpenClaw ``stdout.log`` is an ``agent exec --json`` envelope, not stream-json.
+    """
+    case_dir = Path(case_dir)
+    events_path = case_dir / "events.json"
+    events = _load_json_list(events_path)
+    if events:
+        stream = aeh_events_to_stream_events(events)
+        if stream:
+            return stream
+    traj = case_dir / "openclaw-trajectory-events.jsonl"
+    if traj.is_file() and not traj.is_symlink():
+        try:
+            from agent_eval.events import parse_openclaw_trajectory_events
+            parsed = parse_openclaw_trajectory_events(traj.read_text())
+        except (OSError, UnicodeDecodeError):
+            parsed = []
+        stream = aeh_events_to_stream_events(parsed)
+        if stream:
+            return stream
+    return None
+
+
+def _load_json_list(path):
+    path = Path(path)
+    if not (path.is_file() and not path.is_symlink()):
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, list) else None
+
+
+def _load_stream_json(stdout_path):
+    """Load Claude stream-json NDJSON; skip non-JSON lines (pretty-printed envelopes)."""
+    events = []
+    with open(stdout_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return events
+
+
 def build_trace(stdout_path, run_result, run_id, experiment_id,
                 trace_name="", subagent_dir=None,
-                subagent_model=None, trajectory_path=None):
+                subagent_model=None, trajectory_path=None,
+                stream_events=None):
     """Build a hierarchical MLflow Trace from the stream-json stdout log.
 
     Structure:
@@ -194,21 +325,18 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
     Harbor runs often omit user text from stream-json; pass ``trajectory_path``
     (ATIF ``trajectory.json``) to restore user turns and the root prompt.
 
+    Pass ``stream_events`` (Claude stream-json dicts) to skip reading
+    ``stdout_path``. OpenShell uses this with ``aeh_events_to_stream_events``.
+
     Returns a dict suitable for Trace.from_dict(), or None.
     """
-    if not stdout_path.exists():
+    stdout_path = Path(stdout_path) if stdout_path else None
+    if stream_events is not None:
+        events = [e for e in stream_events if isinstance(e, dict)]
+    elif stdout_path is not None and stdout_path.exists():
+        events = _load_stream_json(stdout_path)
+    else:
         return None
-
-    events = []
-    with open(stdout_path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
     if not events:
         return None
 
@@ -396,7 +524,12 @@ def build_trace(stdout_path, run_result, run_id, experiment_id,
 
     # Resolve subagent output directory: saved copies from execute.py
     # live alongside stdout.log in <run_dir>/subagents/.
-    _subagent_dir = subagent_dir or (stdout_path.parent / "subagents")
+    if subagent_dir:
+        _subagent_dir = Path(subagent_dir)
+    elif stdout_path is not None:
+        _subagent_dir = stdout_path.parent / "subagents"
+    else:
+        _subagent_dir = Path(".")
 
     for agent_id, output_path in _agent_output_files.items():
         parent_tuid = _agent_to_parent.get(agent_id)

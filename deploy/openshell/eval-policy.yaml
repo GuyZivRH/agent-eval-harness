@@ -23,6 +23,9 @@ filesystem_policy:
     - /bin
     - /sbin
     - /opt/openclaw  # Required for Quay OpenClaw image (installed under /opt)
+    - /opt           # OpenShell applies read grants at the image mount root
+    - /opt/forge     # Required for the SAW launcher and image-provided persona/skills
+    - /app           # Compatibility symlink to the SAW launcher
   read_write:
     - /sandbox
     - /tmp
@@ -53,6 +56,12 @@ network_policies:
         port: 443
         protocol: rest
         access: full
+      # The Forge OpenAI-compatible model is served by the namespace-local
+      # SAW VM forward, while OpenClaw still identifies the provider as openai.
+      - host: host.containers.internal
+        port: 18084
+        protocol: rest
+        access: full
     binaries:
       - path: /usr/bin/node
       - path: /usr/local/bin/node
@@ -80,6 +89,58 @@ network_policies:
       - path: /usr/bin/node
       - path: /usr/local/bin/node
       - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # In-cluster LiteLLM (OpenClaw openai-completions; cluster Forge evals)
+  litellm_cluster:
+    name: litellm-cluster
+    endpoints:
+      - host: litellm.ab-eval-flow.svc.cluster.local
+        port: 4000
+        protocol: rest
+        access: full
+      - host: litellm.gz-forge-eval.svc.cluster.local
+        port: 4000
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  litellm_cluster_short:
+    name: litellm-cluster-short
+    endpoints:
+      - host: litellm.ab-eval-flow.svc
+        port: 4000
+        protocol: rest
+        access: full
+      - host: litellm.gz-forge-eval.svc
+        port: 4000
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Namespace-local Forge AI gateway used by the OpenClaw model provider.
+  forge_ai_gateway:
+    name: forge-ai-gateway
+    endpoints:
+      - host: host.containers.internal
+        port: 18084
+        protocol: rest
+        access: full
+      - host: forge-ai-gateway.gz-forge-eval.svc.cluster.local
+        port: 18486
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
       - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
 
   # Host-side Crabline Slack mock (AEH OpenClaw channel eval)
@@ -119,6 +180,25 @@ network_policies:
     endpoints:
       - host: host.openshell.internal
         port: 8002
+        protocol: rest
+        access: full
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/node
+      - path: /usr/local/bin/node
+      - path: /usr/local/bin/openclaw
+      - path: /opt/openclaw/node_modules/openclaw/openclaw.mjs
+
+  # Live Microsoft Graph (Forge Outlook + calendar; scene m365.seed: external)
+  m365_graph:
+    name: microsoft-graph
+    endpoints:
+      - host: graph.microsoft.com
+        port: 443
+        protocol: rest
+        access: full
+      - host: login.microsoftonline.com
+        port: 443
         protocol: rest
         access: full
     binaries:

@@ -210,6 +210,37 @@ class TestParsers:
 
 class TestStructuredJudge:
 
+    def test_truncation_retries_with_larger_budget(self):
+        import score
+        truncated = self._resp()
+        truncated.stop_reason = "max_tokens"
+        complete = self._resp(self._tool_use("submit_score", {"score": 4, "rationale": "complete"}))
+        with patch("score._get_anthropic_client") as client:
+            create = client.return_value.messages.create
+            create.side_effect = [truncated, complete]
+            assert score._call_structured_judge("p", "m", "score") == (4, "complete")
+            assert [c.kwargs["max_tokens"] for c in create.call_args_list] == [4096, 8192]
+
+    def test_truncation_retry_has_hard_limit(self):
+        import score
+        truncated = self._resp()
+        truncated.stop_reason = "max_tokens"
+        with patch("score._get_anthropic_client") as client:
+            client.return_value.messages.create.return_value = truncated
+            with pytest.raises(ValueError, match="truncated"):
+                score._call_structured_judge("p", "m", "score", max_tokens=32768)
+            assert client.return_value.messages.create.call_count == 1
+
+    def test_empty_nontruncated_response_is_not_retried(self):
+        import score
+        empty = self._resp()
+        empty.stop_reason = "end_turn"
+        with patch("score._get_anthropic_client") as client:
+            client.return_value.messages.create.return_value = empty
+            with pytest.raises(ValueError):
+                score._call_structured_judge("p", "m", "score")
+            assert client.return_value.messages.create.call_count == 1
+
     def _resp(self, *blocks):
         return type("R", (), {"content": list(blocks)})()
 
