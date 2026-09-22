@@ -1067,6 +1067,15 @@ def _call_structured_judge(prompt, model, feedback_type, images=None,
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=[{"role": "user", "content": _judge_user_message(prompt, images)}],
     )
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        # Reasoning tokens share the completion budget. A truncated response
+        # is not a verdict, even when it contains a partially formed tool call.
+        if max_tokens >= 32768:
+            raise ValueError("judge response truncated at maximum token budget")
+        return _call_structured_judge(
+            prompt, model, feedback_type, images=images,
+            max_tokens=min(max_tokens * 2, 32768), bounds=bounds,
+        )
     for block in response.content:
         if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
             data = dict(block.input)
