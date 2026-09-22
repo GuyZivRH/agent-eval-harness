@@ -334,9 +334,12 @@ async def _run_openclaw_llm_preflight(
         "const c=JSON.parse(fs.readFileSync(configPath,'utf8'));"
         "const p=c.models.providers[providerName];"
         "if(!p||!p.baseUrl)throw new Error('provider config missing: '+providerName);"
+        "const ref=typeof p.apiKey==='string'&&p.apiKey.match(/^\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}$/);"
+        "const apiKey=ref?process.env[ref[1]]:p.apiKey;"
+        "if(ref&&!apiKey)throw new Error('missing provider credential env: '+ref[1]);"
         "const url=p.baseUrl.replace(/\\/$/,'')+'/chat/completions';"
         "const headers={'content-type':'application/json'};"
-        "if(p.apiKey&&p.apiKey!=='empty')headers.authorization='Bearer '+p.apiKey;"
+        "if(apiKey&&apiKey!=='empty')headers.authorization='Bearer '+apiKey;"
         "const ctl=new AbortController();"
         "const timer=setTimeout(()=>ctl.abort(),30000);"
         "fetch(url,{method:'POST',headers,signal:ctl.signal,body:JSON.stringify({"
@@ -1371,8 +1374,8 @@ async def _run_case(
                         stdin=config_json.encode(),
                     )
                     # SAW providers inject their bearer only into the sandbox.
-                    # Resolve a deferred "$VARNAME" API key there, without ever
-                    # exposing it to the orchestration pod or its logs.
+                    # Preserve a native environment reference in the readable
+                    # config; never materialize the injected credential there.
                     await sandbox.exec(
                         name,
                         [
@@ -1385,7 +1388,7 @@ async def _run_case(
                             "if(typeof v.apiKey==='string'&&/^\\$[A-Za-z_][A-Za-z0-9_]*$/.test(v.apiKey)){"
                             "const key=v.apiKey.slice(1),value=process.env[key];"
                             "if(!value)throw new Error('missing sandbox provider credential: '+key);"
-                            "v.apiKey=value;}}"
+                            "v.apiKey='${'+key+'}';}}"
                             "fs.writeFileSync(p,JSON.stringify(c));",
                         ],
                     )

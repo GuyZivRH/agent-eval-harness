@@ -38,6 +38,37 @@ def test_optional_openclaw_output_probe(code, expected):
     assert sandbox.exec.call_args.args[0] == "test-sandbox"
 
 
+def test_llm_preflight_resolves_environment_reference_in_memory(tmp_path, monkeypatch):
+    import asyncio
+    import shutil
+    import subprocess
+    from agent_eval.openshell.run import _run_openclaw_llm_preflight
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node required for preflight script regression")
+    path = tmp_path / "config.json"
+    original = json.dumps({"models": {"providers": {"inference": {
+        "baseUrl": "https://example.invalid/v1", "apiKey": "${PREFLIGHT_TEST_KEY}",
+    }}}})
+    path.write_text(original)
+    monkeypatch.setenv("PREFLIGHT_TEST_KEY", "synthetic-test-value")
+    sandbox = SimpleNamespace(exec=AsyncMock(return_value=SimpleNamespace(
+        return_code=0, stdout="", stderr="")))
+    asyncio.run(_run_openclaw_llm_preflight(sandbox, "test", path, "inference/test"))
+    argv = sandbox.exec.call_args.args[1]
+    stub = (
+        "global.fetch=async(url,opts)=>{"
+        "if(opts.headers.authorization!=='Bearer synthetic-test-value')throw new Error('bad auth');"
+        "return {ok:true,status:200,text:async()=>JSON.stringify({choices:[{message:{content:'OK'}}]})};};"
+    )
+    result = subprocess.run([node, "-e", stub + argv[2], *argv[3:]], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "LLM_PREFLIGHT_OK" in result.stdout
+    assert "synthetic-test-value" not in result.stdout
+    assert path.read_text() == original
+
+
 class TestChildEnv:
     """Tests for _child_env (bootstrap sentinel stripping)."""
 
