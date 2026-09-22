@@ -60,6 +60,7 @@ def test_fetch_harness_snapshot_from_mlflow(tmp_path: Path):
 
     client = MagicMock()
     client.download_artifacts.return_value = str(artifact)
+    client.list_artifacts.return_value = [MagicMock(path=HARNESS_SNAPSHOT_ARTIFACT, is_dir=False)]
 
     fake_runs = MagicMock()
     fake_runs.empty = False
@@ -74,6 +75,24 @@ def test_fetch_harness_snapshot_from_mlflow(tmp_path: Path):
     assert data is not None
     assert data["agent"] == "code"
     client.download_artifacts.assert_called_once()
+
+
+def test_absent_snapshot_is_not_downloaded():
+    client = MagicMock()
+    client.list_artifacts.return_value = []
+    runs = MagicMock(empty=False)
+    runs.run_id = ["run"]
+    assert fetch_harness_snapshot("exp", "run", client=client, search_runs=lambda **kw: runs) is None
+    client.download_artifacts.assert_not_called()
+
+
+def test_artifact_listing_failure_does_not_trigger_download():
+    client = MagicMock()
+    client.list_artifacts.side_effect = RuntimeError("unavailable")
+    runs = MagicMock(empty=False)
+    runs.run_id = ["run"]
+    assert fetch_harness_snapshot("exp", "run", client=client, search_runs=lambda **kw: runs) is None
+    client.download_artifacts.assert_not_called()
 
 
 def test_disk_to_tags_round_trip(tmp_path: Path):
@@ -94,6 +113,7 @@ def test_disk_to_tags_round_trip(tmp_path: Path):
     # Simulate MLflow artifact download returning the same file
     client = MagicMock()
     client.download_artifacts.return_value = str(path)
+    client.list_artifacts.return_value = [MagicMock(path=HARNESS_SNAPSHOT_ARTIFACT, is_dir=False)]
     fake_runs = MagicMock()
     fake_runs.empty = False
     fake_runs.run_id = ["mr1"]

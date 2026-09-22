@@ -536,8 +536,7 @@ def main():
     # Flush async queue so traces are committed before linking/feedback.
     if trace_ids:
         try:
-            from mlflow.tracing.export.async_export_queue import AsyncExportQueue
-            AsyncExportQueue.get_instance().flush(timeout_sec=30)
+            mlflow.flush_trace_async_logging()
         except Exception as e:
             print(f"WARNING: trace export flush failed: {e}", file=sys.stderr)
 
