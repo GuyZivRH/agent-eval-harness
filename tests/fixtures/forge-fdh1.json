@@ -1,0 +1,31 @@
+{
+  "source": "rh-forge/forge-drafts-service/contract/fdh1-vectors.json",
+  "source_revision": "b183a501da2e6d8ad454c7ee511ea21cf93dd7c7",
+  "source_sha256": "c315ad7f419e4e21d8652e24531a251bdbfb8ff5ad7f23cce22951d5f9f54e36",
+  "vectors": [
+    {
+      "canonical": "{\"Z\":2,\"a\":1,\"\u00e9\":3}",
+      "input": "{\"a\":1,\"Z\":2,\"\u00e9\":3}",
+      "name": "key_sort_byte_order",
+      "sha256": "8cadc1d6beff761499bda851036abe1be6943d52cd5fe12b15af1bfd939a75de"
+    },
+    {
+      "canonical": "{\"body\":\"line1\\nline2\\ttabbed\\r\"}",
+      "input": "{\"body\":\"line1\\nline2\\ttabbed\\r\"}",
+      "name": "body_whitespace_controls",
+      "sha256": "769be6cd4ed310e488145b629634b4382c3ec5ed729b8b3fcb200cd62e028beb"
+    },
+    {
+      "canonical": "{\"attachments\":[{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"name\":\"q3.pdf\",\"size\":1024}],\"body\":\"Looks good.\\nSend it.\",\"cc\":[],\"channel\":\"mail\",\"context_ref\":\"thread-9\",\"subject\":\"RE: Q3\",\"to\":[\"exec@example.com\"]}",
+      "input": "{\"channel\":\"mail\",\"context_ref\":\"thread-9\",\"to\":[\"exec@example.com\"],\"cc\":[],\"subject\":\"RE: Q3\",\"body\":\"Looks good.\\nSend it.\",\"attachments\":[{\"name\":\"q3.pdf\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1024}]}",
+      "name": "mail_payload",
+      "sha256": "a9846663fc752b255450b72413dbfef98cab7aa54cc4c77cb5d3419ad25c2a72"
+    },
+    {
+      "canonical": "{\"channel\":\"slack\",\"channel_id\":\"C0123ABC\",\"context_ref\":\"c-42\",\"text\":\"on it \ud83d\udc4d\",\"thread_ts\":\"1723.0042\"}",
+      "input": "{\"channel\":\"slack\",\"context_ref\":\"c-42\",\"channel_id\":\"C0123ABC\",\"thread_ts\":\"1723.0042\",\"text\":\"on it \\ud83d\\udc4d\"}",
+      "name": "slack_payload",
+      "sha256": "dfc06399f914528a6942cfee92bb8f7bcb76e2f6bdbfdf1986d9f3101e64b243"
+    }
+  ]
+}

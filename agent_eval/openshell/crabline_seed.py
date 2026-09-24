@@ -139,6 +139,8 @@ def seed_crabline_for_case(
 
     Returns seed metadata dict (single) or dict with ``seeds`` list (multi), or None.
     """
+    if not (annotations or {}).get("crabline_seed") and not (annotations or {}).get("crabline_seeds"):
+        return None
     api_root = api_root or _api_root()
     token = token or _bot_token()
     if not token:
@@ -239,4 +241,3 @@ def seed_crabline_for_scene(
             i, result_channel, ts, text[:80],
         )
     return results
-

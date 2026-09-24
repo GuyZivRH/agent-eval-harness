@@ -24,11 +24,19 @@ try {
     // tables. Match Forge's bootstrap, using the image's own schema owner.
     db.exec('PRAGMA auto_vacuum = NONE; VACUUM;');
     const dist = '/opt/openclaw/node_modules/openclaw/dist';
-    const modules = fs.readdirSync(dist).filter(n => /^openclaw-agent-db-maintenance-.*\.js$/.test(n));
-    if (modules.length !== 1) throw new Error('Expected one image database initializer');
-    const maintenance = await import(pathToFileURL(path.join(dist, modules[0])).href);
-    const initialize = Object.values(maintenance).find(v => typeof v === 'function' && v.name === 'ensureOpenClawAgentDatabaseSchema');
-    if (!initialize) throw new Error('Image database initializer unavailable');
+    const initializerName = 'ensureOpenClawAgentDatabaseSchema';
+    const initializers = new Set();
+    for (const name of fs.readdirSync(dist).sort()) {
+      if (!/^openclaw-agent-db-[\w-]+\.m?js$/.test(name)) continue;
+      const modulePath = path.join(dist, name);
+      if (!fs.readFileSync(modulePath, 'utf8').includes(initializerName)) continue;
+      const module = await import(pathToFileURL(modulePath).href);
+      for (const value of Object.values(module)) {
+        if (typeof value === 'function' && value.name === initializerName) initializers.add(value);
+      }
+    }
+    if (initializers.size !== 1) throw new Error(`Expected one image database initializer, found ${initializers.size}`);
+    const [initialize] = initializers;
     initialize(db, {agentId, path: databasePath});
   }
   const meta = db.prepare('SELECT role, schema_version, agent_id FROM schema_meta WHERE meta_key = ?').get('primary');
