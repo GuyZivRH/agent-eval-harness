@@ -309,7 +309,7 @@ async def run_forge_gateway(sandbox, name, prompt, *, env, timeout_s, effort, ca
                     "-subj",
                     "/CN=localhost.localdomain",
                     "-addext",
-                    "subjectAltName=DNS:localhost.localdomain,DNS:drafts.eval.test",
+                    "subjectAltName=DNS:localhost.localdomain",
                 ],
                 check=True,
                 capture_output=True,
@@ -319,7 +319,7 @@ async def run_forge_gateway(sandbox, name, prompt, *, env, timeout_s, effort, ca
         material.update(
             {
                 f: Path(__file__).with_name(f).read_bytes()
-                for f in ("forge_draft_fixture.mjs", "forge_eval_dns.mjs")
+                for f in ("forge_draft_fixture.mjs",)
             }
         )
         for filename, data in material.items():
