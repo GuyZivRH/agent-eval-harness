@@ -307,7 +307,7 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
             # Respect the declared model capabilities. Replacing reasoning
             # and output limits silently can exhaust the entire completion
             # budget before a reasoning model produces its final answer.
-            for field in ("reasoning", "input", "cost", "contextWindow", "maxTokens"):
+            for field in ("reasoning", "input", "cost", "contextWindow", "maxTokens", "compat", "params"):
                 if field in m:
                     entry[field] = m[field]
             provider_entry["models"].append(entry)
@@ -455,8 +455,8 @@ async def _harvest_openclaw_events(
 
     # 2) SQLite-era trajectory export (requires retained --state-dir)
     session_id = (openclaw_json or {}).get("sessionId") or ""
-    if session_id:
-        session_key = build_explicit_openclaw_session_key(session_id)
+    if session_id or openclaw_json.get("sessionKey"):
+        session_key = openclaw_json.get("sessionKey") or build_explicit_openclaw_session_key(session_id)
         export_name = f"aeh-{case_id}"
         try:
             export_result = await sandbox.exec(
@@ -1178,9 +1178,27 @@ async def _run_case(
         # OpenShell sandbox names max 19 chars: prefix(2) + hex(8) + dash + digits
         name = f"e-{uuid.uuid4().hex[:8]}-{case_id[-3:]}"
         start_time = time.monotonic()
+        created = False
         try:
+            settings = config.runner.settings or {}
+            import hashlib
+            from agent_eval.openshell.forge import forge_input_files
+            forge_image = os.environ.get("AGENT_EVAL_OPENSHELL_WORKSPACE") == "forge-image"
+            staged_files=forge_input_files(staged_case) if forge_image else [p for p in staged_case.rglob('*') if p.is_file() and '.git' not in p.relative_to(staged_case).parts]
+            initial_files = {p.relative_to(staged_case).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+                             for p in staged_files}
+            if settings.get("forge_contract"):
+                from agent_eval.forge_contract import validate_fixture
+                try:
+                    fixture, _ = validate_fixture(staged_case)
+                except (ValueError, KeyError, TypeError, OSError) as exc:
+                    invalid = {"exit_code":1,"evaluation_status":"invalid_eval","error":str(exc)}
+                    (case_output / "run_result.json").write_text(json.dumps(invalid))
+                    return invalid
+                (case_output / "fixture-manifest.json").write_text(json.dumps(fixture, indent=2))
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
+            created = True
             forge_image = os.environ.get("AGENT_EVAL_OPENSHELL_WORKSPACE") == "forge-image"
             if forge_image:
                 from agent_eval.openshell.forge import prepare_forge_sandbox
@@ -1199,11 +1217,13 @@ async def _run_case(
             # /sandbox/skills can produce /sandbox/skills/skills), so
             # directory-level uploads break OpenClaw's literal paths.
             for entry in sorted(
-                (path for path in staged_case.rglob("*")
-                 if path.is_file() and ".git" not in path.relative_to(staged_case).parts),
+                staged_files,
                 key=lambda path: str(path.relative_to(staged_case)),
             ):
                 relative = entry.relative_to(staged_case)
+                # Expected answers are host-only; never expose the oracle.
+                if relative.as_posix() in ('eval-fixture.json','draft-expectations.json'):
+                    continue
                 remote_path = f"/sandbox/{relative}"
                 # The published OpenClaw image may already provide runtime
                 # files (for example /sandbox/bin/m365). OpenShell upload
@@ -1220,11 +1240,26 @@ async def _run_case(
                 await sandbox.upload(name, entry, str(Path(remote_path).parent))
 
 
+            if settings.get("forge_contract"):
+                from agent_eval.openshell.forge import validate_forge_evidence
+                try:
+                    await validate_forge_evidence(sandbox, name, fixture["evidence"])
+                except (ValueError, KeyError, TypeError) as exc:
+                    invalid = {"exit_code": 1, "evaluation_status": "invalid_eval", "error": str(exc)}
+                    (case_output / "run_result.json").write_text(json.dumps(invalid))
+                    return invalid
+
             input_yaml_path = staged_case / "input.yaml"
             if input_yaml_path.exists():
                 input_yaml = yaml.safe_load(input_yaml_path.read_text()) or {}
             else:
                 input_yaml = {}
+
+            if forge_image and settings.get('forge_gateway'):
+                import hashlib
+                from agent_eval.openshell.forge import stage_skill_variant, fingerprint_workspace
+                await stage_skill_variant(sandbox, name, staged_case, settings.get('forge_skill_overrides', {}))
+                loaded_files = await fingerprint_workspace(sandbox, name)
 
             # Resolve prompt template (Jinja2 or str.format)
             prompt = _resolve_prompt(config, input_yaml)
@@ -1448,14 +1483,31 @@ async def _run_case(
                 cmd[:-1] if len(cmd) > 1 else cmd,
             )
             timeout = (config.execution.timeout or 600) + 60
-            result = await sandbox.exec(
-                name,
-                cmd,
-                workdir="/sandbox",
-                stdin=stdin_data if runner_type != "cli" else None,
-                env=sandbox_env,
-                timeout_s=timeout,
-            )
+            if forge_image and settings.get('forge_gateway'):
+                provenance = {'image':image, 'model':openclaw_model, 'effort':effort,
+                    'prompt_sha256':hashlib.sha256(prompt.encode()).hexdigest(),
+                    'initial_files':initial_files,
+                    'skill_overrides':settings.get('forge_skill_overrides',{}),
+                    'experiment':settings.get('forge_experiment',{}),
+                    'model_config_sha256':hashlib.sha256(json.dumps(config.runner.providers,sort_keys=True,default=str).encode()).hexdigest(),
+                    'loaded_files':loaded_files,
+                    'harness_files':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()
+                        for p in list(Path(__file__).parent.glob('forge*'))+[Path(__file__),Path(__file__).parent.parent/'forge_contract.py'] if p.is_file()}}
+                (case_output / 'provenance.json').write_text(json.dumps(provenance, indent=2))
+            if forge_image and (config.runner.settings or {}).get("forge_gateway") is True:
+                if runner_type != "openclaw" or not config_path:
+                    raise ValueError("forge_gateway requires OpenClaw and explicit providers")
+                from agent_eval.openshell.forge import run_forge_gateway
+                result = await run_forge_gateway(
+                    sandbox, name, prompt, env=sandbox_env,
+                    timeout_s=config.execution.timeout or 600, effort=effort, case_id=case_id,
+                )
+            else:
+                result = await sandbox.exec(
+                    name, cmd, workdir="/sandbox",
+                    stdin=stdin_data if runner_type != "cli" else None,
+                    env=sandbox_env, timeout_s=timeout,
+                )
             _log_model_diagnostics(case_id, openclaw_model, sandbox_env, name)
             duration_s = time.monotonic() - start_time
             if result.return_code:
@@ -1468,8 +1520,15 @@ async def _run_case(
                     (result.stdout or "")[:400],
                 )
 
+            from agent_eval.openshell.forge import collect_required_artifacts
+            required = settings.get("forge_required_outputs", [])
+            artifact_errors = await collect_required_artifacts(sandbox, name, staged_case, required)
             for output in config.outputs or []:
                 if output.path:
+                    if settings.get('forge_gateway') and output.path == 'eval-results':
+                        continue  # host-generated verdict/usage, never agent output
+                    if output.path in required:
+                        continue
                     # OpenClaw's response is collected from stdout below. Its
                     # conventional output directory is optional, unlike other
                     # explicitly requested artifacts.
@@ -1509,10 +1568,15 @@ async def _run_case(
                 (output_dir / "response.txt").write_text(response_text)
 
                 try:
+                    trace_stdout=result.stdout
+                    if settings.get('forge_gateway') and result.return_code:
+                        # The gateway session key is deterministic even when the
+                        # CLI exits before returning its JSON envelope.
+                        trace_stdout=json.dumps({'sessionKey':'agent:default:aeh-'+case_id})
                     events = await _harvest_openclaw_events(
                         sandbox,
                         name,
-                        stdout_text=result.stdout,
+                        stdout_text=trace_stdout,
                         prompt=prompt,
                         case_id=case_id,
                         case_output=case_output,
@@ -1546,6 +1610,51 @@ async def _run_case(
                 if not response_file.exists() or not response_file.read_text().strip():
                     response_file.write_text(result.stdout or "")
 
+            case_result["evaluation_status"] = "infrastructure_failed" if result.return_code else "passed"
+            if settings.get("forge_gateway"):
+                from agent_eval.openshell.forge import collect_forge_usage
+                usage = await collect_forge_usage(sandbox, name, case_output, sandbox_env)
+                case_result['usage'] = usage
+                case_result['token_usage'] = {k:usage[k] for k in ('input','output')}
+                (staged_case / 'eval-results').mkdir(exist_ok=True)
+                (staged_case / 'eval-results/usage.json').write_text(json.dumps(usage, indent=2))
+                if not usage['complete']:
+                    case_result.update(exit_code=1, evaluation_status='invalid_eval')
+            if artifact_errors:
+                case_result.update(exit_code=1, evaluation_status="invalid_eval", artifact_errors=artifact_errors)
+            if settings.get('forge_child_smoke'):
+                from agent_eval.forge_contract import check_child_smoke
+                verdict=check_child_smoke(case_output,case_result.get('response_text',''))
+                (staged_case/'eval-results').mkdir(exist_ok=True)
+                (staged_case/'eval-results/smoke-verdict.json').write_text(json.dumps(verdict,indent=2))
+                (case_output/'smoke-verdict.json').write_text(json.dumps(verdict,indent=2))
+                if case_result['evaluation_status']=='passed':case_result['evaluation_status']=verdict['status']
+                if verdict['status']!='passed':case_result['exit_code']=1
+            if settings.get("forge_contract") and not artifact_errors:
+                from agent_eval.forge_contract import check_brief
+                validation = await sandbox.exec(name, ["node", "--input-type=module", "-e",
+                    "import fs from 'node:fs';"
+                    "import {validateBriefCandidate} from '/opt/forge/agent-workspace/tools/publish-brief.mjs';"
+                    "console.log(JSON.stringify(validateBriefCandidate(JSON.parse(fs.readFileSync('/sandbox/brief.json','utf8')))));"
+                ])
+                schema_issues = json.loads(validation.stdout) if validation.return_code == 0 else ["image schema validation failed"]
+                verdict = check_brief(staged_case, schema_issues=schema_issues)
+                (case_output / "forge-verdict.json").write_text(json.dumps(verdict, indent=2))
+                (staged_case / 'eval-results').mkdir(exist_ok=True)
+                (staged_case / "eval-results/forge-verdict.json").write_text(json.dumps(verdict, indent=2))
+                if case_result["evaluation_status"] == "passed":
+                    case_result["evaluation_status"] = verdict["status"]
+                if verdict["status"] != "passed":
+                    case_result["exit_code"] = 1
+            if settings.get('forge_draft_fixture') and not artifact_errors:
+                from agent_eval.forge_contract import check_drafts
+                verdict = check_drafts(json.loads((staged_case/'draft-snapshot.json').read_text()),
+                                       json.loads((staged_case/'draft-expectations.json').read_text()))
+                (case_output/'draft-verdict.json').write_text(json.dumps(verdict,indent=2))
+                (staged_case/'eval-results').mkdir(exist_ok=True)
+                (staged_case/'eval-results/draft-verdict.json').write_text(json.dumps(verdict,indent=2))
+                if case_result['evaluation_status']=='passed':case_result['evaluation_status']=verdict['status']
+                if verdict['status']!='passed':case_result['exit_code']=1
             with open(case_output / "run_result.json", "w") as f:
                 json.dump(case_result, f, indent=2)
             (case_output / "stdout.log").write_text(result.stdout)
@@ -1555,9 +1664,9 @@ async def _run_case(
             return case_result
 
         finally:
-            if not keep:
+            if created and not keep:
                 await sandbox.delete(name)
-            else:
+            elif created:
                 logger.info(f"Kept sandbox {name}: openshell sandbox connect {name}")
 
 
