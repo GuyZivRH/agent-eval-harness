@@ -1645,7 +1645,6 @@ async def _run_case(
                     except (AttributeError, UnboundLocalError):
                         session_id = None
                         session_key = None
-                    prior_state = None
                     for continuation in range(3):
                         state = await _forge_brief_progress(sandbox, name)
                         logger.info("Briefing publication progress: %s", state)
@@ -1663,11 +1662,6 @@ async def _run_case(
                         follow_up = _forge_brief_continuation(state)
                         if not follow_up or remaining < 60 or not (session_key or session_id):
                             break
-                        if (state == prior_state
-                                and state.get("batchesCompleted", 0) >= state.get("batchesPlanned", 0)):
-                            logger.warning("Briefing continuation made no publication progress")
-                            break
-                        prior_state = state
                         session_args = (["--session-key", session_key] if session_key
                                         else ["--session-id", session_id])
                         next_cmd = [
