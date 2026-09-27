@@ -740,6 +740,10 @@ class TestOpenclawEvalConfig:
         assert entries["main"]["subagents"]["allowAgents"] == ["brief-reader"]
         assert entries["brief-reader"]["workspace"] == "/sandbox"
         assert entries["brief-reader"]["tools"]["allow"] == ["read", "write"]
+        assert cfg["gateway"] == {
+            "mode": "local", "bind": "loopback", "port": 18789,
+            "auth": {"mode": "none"},
+        }
 
         generic, _ = build_openclaw_eval_config(self._WXNB_PROVIDERS, "claude-sonnet")
         assert "entries" not in generic["agents"]

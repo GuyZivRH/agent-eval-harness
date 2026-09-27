@@ -282,6 +282,16 @@ def build_openclaw_eval_config(
                 "tools": {"allow": ["read", "write"]},
             },
         }
+        # Fan-out children require a published reply runtime, which isolated
+        # `agent exec` does not create. Run this image through its loopback
+        # Gateway just as Forge does; never expose the eval Gateway on the pod
+        # network or rely on the cluster's OpenShell gateway for agent routing.
+        openclaw_config["gateway"] = {
+            "mode": "local",
+            "bind": "loopback",
+            "port": 18789,
+            "auth": {"mode": "none"},
+        }
     for name, provider_cfg in providers.items():
         provider_cfg = provider_cfg or {}
         raw_base = provider_cfg.get("baseUrl", "")
@@ -1451,17 +1461,45 @@ async def _run_case(
                 # Pass --state-dir so agent exec keeps SQLite (default temp state
                 # is deleted on exit). Same path as OPENCLAW_STATE_DIR under
                 # /sandbox (Landlock read_write). Needed for trajectory export.
-                cmd = build_openclaw_argv(
-                    model=openclaw_model,
-                    timeout_s=config.execution.timeout,
-                    effort=effort,
-                    cwd=Path("/sandbox"),
-                    auth_env_only=auth_env_only,
-                    config_path=config_path,
-                    state_dir=_OPENCLAW_STATE_DIR,
-                )
-                # Prompt is positional argument in 'agent exec' format
-                cmd.append(prompt)
+                if forge_image:
+                    started = await sandbox.exec(
+                        name,
+                        ["sh", "-lc", "nohup openclaw gateway run --bind loopback --auth none --port 18789 "
+                         "</dev/null >/sandbox/.openclaw/gateway.log 2>&1 &"],
+                        workdir="/sandbox",
+                        env=sandbox_env,
+                        timeout_s=15,
+                    )
+                    if started.return_code:
+                        raise RuntimeError("Sandbox-local OpenClaw Gateway did not start")
+                    for attempt in range(30):
+                        health = await sandbox.exec(
+                            name,
+                            ["openclaw", "gateway", "health"],
+                            workdir="/sandbox",
+                            env=sandbox_env,
+                            timeout_s=10,
+                        )
+                        if not health.return_code:
+                            break
+                        await asyncio.sleep(1)
+                    else:
+                        raise RuntimeError("Sandbox-local OpenClaw Gateway did not become healthy")
+                    cmd = ["openclaw", "agent", "--agent", "main", "--json",
+                           "--model", openclaw_model, "--timeout",
+                           str(config.execution.timeout or 600), "--message", prompt]
+                else:
+                    cmd = build_openclaw_argv(
+                        model=openclaw_model,
+                        timeout_s=config.execution.timeout,
+                        effort=effort,
+                        cwd=Path("/sandbox"),
+                        auth_env_only=auth_env_only,
+                        config_path=config_path,
+                        state_dir=_OPENCLAW_STATE_DIR,
+                    )
+                    # Prompt is positional argument in 'agent exec' format
+                    cmd.append(prompt)
                 stdin_data = None
 
             logger.info(
