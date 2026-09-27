@@ -18,6 +18,7 @@ from agent_eval.openshell.run import (
     _ensure_m365_credentials,
     _forge_brief_continuation,
     _forge_brief_progress,
+    _forge_wait_for_batches,
     _install_m365_file_auth,
     _m365_usable,
     _openai_compat_base_url,
@@ -36,6 +37,10 @@ def test_forge_brief_continuation_respects_publication_and_claim():
     assert "Do not start another sweep" in active
     attention = _forge_brief_continuation({"publishedScope": "attention"})
     assert "complete the full run" in attention
+    pending = _forge_brief_continuation({
+        "evidenceId": "ev-1", "batchesPlanned": 7, "batchesCompleted": 3,
+    })
+    assert "do not spawn duplicate readers" in pending
 
 
 def test_forge_brief_continuation_stops_on_expired_evidence():
@@ -51,6 +56,19 @@ def test_forge_brief_progress_reads_only_state():
     command = sandbox.exec.call_args.args[1]
     assert command[:2] == ["node", "-e"]
     assert "message" not in command[2]
+
+
+def test_forge_waits_for_pending_children_before_resuming_parent():
+    import asyncio
+    pending = {"evidenceId": "ev-1", "batchesPlanned": 7, "batchesCompleted": 3}
+    completed = {**pending, "batchesCompleted": 7}
+    with (patch("agent_eval.openshell.run._forge_brief_progress", new_callable=AsyncMock,
+                return_value=completed) as progress,
+          patch("agent_eval.openshell.run.asyncio.sleep", new_callable=AsyncMock) as sleep):
+        state = asyncio.run(_forge_wait_for_batches(SimpleNamespace(), "sb", pending, 1))
+    assert state == completed
+    progress.assert_awaited_once()
+    sleep.assert_awaited_once()
 
 
 def test_forge_brief_is_the_only_judged_output_file(tmp_path):

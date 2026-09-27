@@ -76,9 +76,14 @@ async def _forge_brief_progress(sandbox: OpenShellSandbox, name: str) -> dict:
         "function read(p){try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return null}}"
         "const brief=read('/sandbox/brief.json');"
         "const run=read('/sandbox/.openclaw/tmp/brief.run.json');"
+        "const manifest=read('/sandbox/.openclaw/tmp/brief.evidence.json');"
+        "const batches=Array.isArray(manifest?.batches)?manifest.batches:[];"
+        "const completed=batches.filter(b=>{const r=read('/sandbox/.openclaw/tmp/batches/'+b.id+'.result.json');"
+        "return r?.evidenceId===manifest.evidenceId&&r?.batchId===b.id}).length;"
         "console.log(JSON.stringify({publishedScope:brief?.scope??null,"
         "runPhase:run?.phase??null,evidenceId:run?.evidenceId??null,"
-        "deadline:run?.deadline??null,sealed:run?.sealed??null}));"
+        "deadline:run?.deadline??null,sealed:run?.sealed??null,"
+        "batchesPlanned:batches.length,batchesCompleted:completed}));"
     )
     result = await sandbox.exec(name, ["node", "-e", script], timeout_s=10)
     if result.return_code:
@@ -101,6 +106,15 @@ def _forge_brief_continuation(state: dict) -> str | None:
         except (TypeError, ValueError):
             return None
     if state.get("evidenceId"):
+        if state.get("batchesPlanned", 0) > state.get("batchesCompleted", 0):
+            return (
+                "Continue the same daily briefing evidence claim. Some declared batch readers "
+                "have not written result files yet. Check their existing child sessions first; "
+                "do not spawn duplicate readers while they are running. If a child has ended "
+                "without a result, retry only that missing batch. Once every batch has reported, "
+                "compose and publish the full brief.json. Do not sweep again or claim completion "
+                "from the interim attention brief."
+            )
         return (
             "Continue the daily briefing already in progress from its current governed "
             "evidence claim. Do not start another sweep or discard the manifest. Seal if "
@@ -114,6 +128,27 @@ def _forge_brief_continuation(state: dict) -> str | None:
         "beginning. Review the governed evidence in bounded batches, compose and "
         "publish a full brief.json. Do not claim completion before publication."
     )
+
+
+async def _forge_wait_for_batches(
+    sandbox: OpenShellSandbox, name: str, state: dict, budget_s: float,
+) -> dict:
+    """Allow already-spawned child readers to finish before prompting the parent.
+
+    An unchanged publication scope is expected during fan-out, not evidence of
+    a stalled agent. This reads only result counts, never message contents.
+    """
+    if not state.get("batchesPlanned") or state.get("batchesCompleted", 0) >= state["batchesPlanned"]:
+        return state
+    until = time.monotonic() + max(0, min(budget_s, 180))
+    while time.monotonic() < until:
+        await asyncio.sleep(min(5, max(0, until - time.monotonic())))
+        state = await _forge_brief_progress(sandbox, name)
+        if (state.get("publishedScope") == "full"
+                or not _forge_brief_continuation(state)
+                or state.get("batchesCompleted", 0) >= state.get("batchesPlanned", 0)):
+            break
+    return state
 
 
 def _m365_usable(value: Optional[str]) -> bool:
@@ -1614,13 +1649,22 @@ async def _run_case(
                     for continuation in range(3):
                         state = await _forge_brief_progress(sandbox, name)
                         logger.info("Briefing publication progress: %s", state)
-                        follow_up = _forge_brief_continuation(state)
                         remaining = (config.execution.timeout or 600) - (
                             time.monotonic() - start_time
                         )
+                        if state.get("batchesPlanned", 0) > state.get("batchesCompleted", 0):
+                            state = await _forge_wait_for_batches(
+                                sandbox, name, state, remaining - 60,
+                            )
+                            logger.info("Briefing batch wait progress: %s", state)
+                            remaining = (config.execution.timeout or 600) - (
+                                time.monotonic() - start_time
+                            )
+                        follow_up = _forge_brief_continuation(state)
                         if not follow_up or remaining < 60 or not (session_key or session_id):
                             break
-                        if state == prior_state:
+                        if (state == prior_state
+                                and state.get("batchesCompleted", 0) >= state.get("batchesPlanned", 0)):
                             logger.warning("Briefing continuation made no publication progress")
                             break
                         prior_state = state
