@@ -735,6 +735,7 @@ class TestOpenclawEvalConfig:
             "inference/claude-sonnet"
         ]
         assert cfg["agents"]["ownership"] == "explicit"
+        assert cfg["agents"]["defaults"]["systemAgent"]["agentId"] == "main"
         assert entries["main"]["workspace"] == "/sandbox"
         assert entries["main"]["subagents"]["allowAgents"] == ["brief-reader"]
         assert entries["brief-reader"]["workspace"] == "/sandbox"

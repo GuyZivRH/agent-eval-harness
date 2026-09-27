@@ -270,6 +270,7 @@ def build_openclaw_eval_config(
         openclaw_config["agents"]["defaults"]["modelPolicy"] = {
             "allow": [qualified]
         }
+        openclaw_config["agents"]["defaults"]["systemAgent"] = {"agentId": "main"}
         openclaw_config["agents"]["ownership"] = "explicit"
         openclaw_config["agents"]["entries"] = {
             "main": {
