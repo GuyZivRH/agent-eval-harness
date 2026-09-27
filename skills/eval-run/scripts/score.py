@@ -1572,8 +1572,8 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
                 name: {"value": None, "error": reason, "judge_type": judge_type}
                 for name, _, _, judge_type, _ in judges
             }
-        case_results = {}
-        for name, scorer, condition, judge_type, judge_samples in judges:
+        def _score_judge(judge):
+            name, scorer, condition, judge_type, judge_samples = judge
             # Step-scoped judges see that step's trace; others the whole case.
             rec = (_step_scoped_record(record, judge_steps[name])
                    if name in judge_steps else record)
@@ -1583,23 +1583,21 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
                     annotations = rec.get("annotations", {})
                     if not eval(condition, {"__builtins__": {}},
                                 {"annotations": annotations, "outputs": rec}):
-                        case_results[name] = {
+                        return name, {
                             "value": None,
                             "rationale": f"Skipped: condition '{condition}' is false",
                             "judge_type": judge_type,
                         }
-                        continue
                 except Exception as e:
                     # An `error` key, not just a rationale: a condition that
                     # blew up is a failure, and reward composition must not
                     # mistake it for a judge that was meant to be skipped.
-                    case_results[name] = {
+                    return name, {
                         "value": None,
                         "error": f"Condition error: {e}",
                         "rationale": f"Condition error: {e}",
                         "judge_type": judge_type,
                     }
-                    continue
             # CLI --samples overrides per-judge config for stochastic (LLM and
             # agent) judges only; deterministic judges always run once.
             if judge_type in ("llm", "agent"):
@@ -1620,16 +1618,31 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
                         except Exception as e:
                             _log_judge_error(case_id, e)
                             runs.append({"value": None, "error": str(e)})
-                    case_results[name] = _aggregate_samples(runs, judge_type)
+                    result = _aggregate_samples(runs, judge_type)
                 else:
                     v, rat = _normalize_result(scorer(outputs=rec))
                     v = _enforce_bounds(v, bounds, name)
-                    case_results[name] = {"value": v, "rationale": rat,
-                                          "judge_type": judge_type}
+                    result = {"value": v, "rationale": rat,
+                              "judge_type": judge_type}
             except Exception as e:
                 _log_judge_error(case_id, e)
-                case_results[name] = {"value": None, "error": str(e),
-                                      "judge_type": judge_type}
+                result = {"value": None, "error": str(e),
+                          "judge_type": judge_type}
+            return name, result
+
+        case_results = {}
+        # A one-case evaluation otherwise waits for every independent LLM
+        # judge serially. Bound concurrency to avoid overwhelming the model
+        # gateway while allowing quality dimensions to finish together.
+        judge_workers = min(3, len(judges)) if len(case_dirs) == 1 else 1
+        if judge_workers > 1:
+            with ThreadPoolExecutor(max_workers=judge_workers) as judge_pool:
+                for name, result in judge_pool.map(_score_judge, judges):
+                    case_results[name] = result
+        else:
+            for judge in judges:
+                name, result = _score_judge(judge)
+                case_results[name] = result
         # Annotate step-scoped judges so the summary/report shows the step.
         for jn, sid in judge_steps.items():
             if isinstance(case_results.get(jn), dict):

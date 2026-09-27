@@ -44,6 +44,12 @@ def test_forge_brief_continuation_respects_publication_and_claim():
         "evidenceId": "ev-1", "batchesPlanned": 7, "batchesCompleted": 3,
     })
     assert "do not spawn duplicate readers" in pending
+    complete = _forge_brief_continuation({
+        "evidenceId": "ev-1", "sealed": True,
+        "batchesPlanned": 4, "batchesCompleted": 4,
+    })
+    assert "All 4/4 declared batch results" in complete
+    assert "Do not sweep, seal, wait, spawn readers" in complete
 
 
 def test_forge_brief_continuation_stops_on_expired_evidence():

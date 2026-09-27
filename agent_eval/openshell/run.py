@@ -140,6 +140,18 @@ def _forge_brief_continuation(state: dict) -> str | None:
                 "compose and publish the full brief.json. Do not sweep again or claim completion "
                 "from the interim attention brief."
             )
+        if state.get("sealed") and state.get("batchesPlanned", 0) > 0:
+            return (
+                f"All {state.get('batchesCompleted', 0)}/{state['batchesPlanned']} "
+                "declared batch results are complete for this sealed evidence claim. "
+                "Do not sweep, seal, wait, spawn readers, or summarize in chat now. "
+                "In this turn, read the completed batch results, rank them against the "
+                "skill's criteria, write the items file, run compose-brief.mjs, then "
+                "run publish-brief.mjs. If validation rejects the candidate, repair it "
+                "and retry publication before ending the turn. Report completion only "
+                "after the publisher verifies a full brief.json; otherwise report the "
+                "specific blocker."
+            )
         return (
             "Continue the daily briefing already in progress from its current governed "
             "evidence claim. Do not start another sweep or discard the manifest. Seal if "
