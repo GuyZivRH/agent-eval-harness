@@ -1,6 +1,7 @@
 """Tests for the OpenShell backend orchestrator."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -81,8 +82,9 @@ def test_forge_refuses_ground_truth_for_another_mailbox():
         _forge_assert_mailbox_identity({"evidenceId": "ev-1"}, "tbx-demo2@dev.mscloud.ibm.com")
 
 
-def test_forge_waits_for_pending_children_before_resuming_parent():
+def test_forge_waits_for_pending_children_before_resuming_parent(caplog):
     import asyncio
+    caplog.set_level(logging.INFO)
     pending = {"evidenceId": "ev-1", "batchesPlanned": 7, "batchesCompleted": 3}
     completed = {**pending, "batchesCompleted": 7}
     with (patch("agent_eval.openshell.run._forge_brief_progress", new_callable=AsyncMock,
@@ -92,6 +94,7 @@ def test_forge_waits_for_pending_children_before_resuming_parent():
     assert state == completed
     progress.assert_awaited_once()
     sleep.assert_awaited_once()
+    assert "Briefing batches: 7/7 complete" in caplog.text
 
 
 def test_forge_does_not_wait_for_stale_attention_batches():

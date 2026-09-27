@@ -169,10 +169,16 @@ async def _forge_wait_for_batches(
     if (not state.get("evidenceId") or not state.get("batchesPlanned")
             or state.get("batchesCompleted", 0) >= state["batchesPlanned"]):
         return state
+    last_completed = state.get("batchesCompleted", 0)
     until = time.monotonic() + max(0, min(budget_s, 180))
     while time.monotonic() < until:
         await asyncio.sleep(min(5, max(0, until - time.monotonic())))
         state = await _forge_brief_progress(sandbox, name)
+        completed = state.get("batchesCompleted", 0)
+        if completed != last_completed:
+            logger.info("Briefing batches: %s/%s complete", completed,
+                        state.get("batchesPlanned", 0))
+            last_completed = completed
         if (state.get("publishedScope") == "full"
                 or not _forge_brief_continuation(state)
                 or state.get("batchesCompleted", 0) >= state.get("batchesPlanned", 0)):
