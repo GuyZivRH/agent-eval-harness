@@ -53,6 +53,28 @@ def test_forge_brief_progress_reads_only_state():
     assert "message" not in command[2]
 
 
+def test_forge_brief_is_the_only_judged_output_file(tmp_path):
+    """AEH chooses the first file in output/, so diagnostics must stay outside it."""
+    import importlib.util
+
+    script = Path(__file__).parents[1] / "skills/eval-run/scripts/score.py"
+    spec = importlib.util.spec_from_file_location("forge_score_layout_test", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    case = tmp_path / "morning-briefing"
+    (case / "output").mkdir(parents=True)
+    (case / "output" / "response.txt").write_text('{"scope":"full"}')
+    (case / "agent_response.txt").write_text("Done")
+    (case / "published-brief.json").write_text('{"scope":"full"}')
+    config = SimpleNamespace(
+        dataset=SimpleNamespace(path=None),
+        outputs=[SimpleNamespace(path="output", tool=None)],
+    )
+    record = module.load_case_record(case, config, runs_dir=tmp_path)
+    assert record["output_content"] == '{"scope":"full"}'
+    assert record["output_file"].endswith("/output/response.txt")
+
+
 @pytest.mark.parametrize("code,expected", [(0, True), (3, False), (2, True), (127, True)])
 def test_optional_openclaw_output_probe(code, expected):
     import asyncio

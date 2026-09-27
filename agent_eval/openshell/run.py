@@ -1692,12 +1692,16 @@ async def _run_case(
                 if forge_image and case_id == "morning-briefing":
                     publication = await _forge_brief_progress(sandbox, name)
                     if publication.get("publishedScope") == "full":
-                        brief_path = output_dir / "brief.json"
+                        # score.py uses the alphabetically first file in the
+                        # configured output directory as output_content. Keep
+                        # only response.txt there so judges receive the actual
+                        # published brief, not a diagnostic chat transcript.
+                        brief_path = case_output / "published-brief.json"
                         await sandbox.download(name, "/sandbox/brief.json", brief_path)
                         brief = json.loads(brief_path.read_text())
                         if brief.get("scope") != "full":
                             raise RuntimeError("Downloaded Forge brief is not a full publication")
-                        (output_dir / "agent_response.txt").write_text(response_text)
+                        (case_output / "agent_response.txt").write_text(response_text)
                         (output_dir / "response.txt").write_text(
                             json.dumps(brief, indent=2, ensure_ascii=False)
                         )
