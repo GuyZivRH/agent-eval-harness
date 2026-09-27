@@ -1043,6 +1043,22 @@ class TestOpenClawTrajectoryEvents:
         assert [e["type"] for e in events] == ["user", "assistant"]
         assert events[1]["text"] == "Paris"
 
+    def test_gateway_envelope_fallback(self):
+        envelope = json.dumps({
+            "status": "ok",
+            "result": {
+                "meta": {
+                    "finalAssistantVisibleText": "Published full briefing.",
+                    "agentMeta": {"model": "glm-5-3"},
+                },
+                "payloads": [{"text": "Published full briefing."}],
+            },
+        })
+        events = events_from_openclaw_exec(envelope, prompt="Brief me")
+        assert [e["type"] for e in events] == ["user", "assistant"]
+        assert events[1]["text"] == "Published full briefing."
+        assert events[1]["model"] == "glm-5-3"
+
     def test_resolve_session_key_from_list(self):
         payload = {
             "sessions": [

@@ -195,6 +195,24 @@ class TestParseOpenclawToCaseDict:
         assert result["num_turns"] == 5
         assert result["resolved_model"] == "claude-opus-4-6"
 
+    def test_gateway_wrapped_result_preserves_visible_response(self):
+        from agent_eval.agent.openclaw import extract_openclaw_response
+        stdout = json.dumps({
+            "status": "ok", "summary": "completed", "runId": "run-1",
+            "result": {
+                "meta": {
+                    "finalAssistantVisibleText": "Published full briefing.",
+                    "agentMeta": {"sessionId": "session-1", "model": "glm-5-3"},
+                    "stopReason": "stop",
+                },
+                "payloads": [{"text": "Published full briefing."}],
+            },
+        }).encode()
+        result = parse_openclaw_to_case_dict(stdout, b"", 0, 4.0)
+        assert result["response_text"] == "Published full briefing."
+        assert result["resolved_model"] == "glm-5-3"
+        assert extract_openclaw_response(stdout) == "Published full briefing."
+
     def test_parse_failure_to_dict(self):
         result = parse_openclaw_to_case_dict(b"bad", b"stderr", 1, 0.5)
         

@@ -994,6 +994,10 @@ def events_from_openclaw_exec(stdout_text, prompt=None):
     data = _parse_openclaw_json_object(stdout_text)
     if not data:
         return []
+    if isinstance(data.get("result"), dict):
+        data = {**data["result"], **{k: v for k, v in data.items() if k != "result"}}
+    if data.get("ok") is False or data.get("status") in ("error", "timeout"):
+        return []
 
     # Legacy / richer envelopes with nested meta still prefer sessionFile
     # parsing when callers have already loaded JSONL; this helper only
@@ -1009,7 +1013,7 @@ def events_from_openclaw_exec(stdout_text, prompt=None):
             "timestamp": None,
         })
 
-    response = data.get("final") or ""
+    response = (data.get("meta") or {}).get("finalAssistantVisibleText") or data.get("final") or ""
     if not response:
         payloads = data.get("payloads") or []
         if payloads and isinstance(payloads[0], dict):
@@ -1020,7 +1024,7 @@ def events_from_openclaw_exec(stdout_text, prompt=None):
             "type": "assistant",
             "text": response,
             "timestamp": None,
-            "model": data.get("model"),
+            "model": data.get("model") or ((data.get("meta") or {}).get("agentMeta") or {}).get("model"),
         })
 
     return events

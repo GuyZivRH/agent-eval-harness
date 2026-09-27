@@ -487,7 +487,11 @@ async def _harvest_openclaw_events(
             logger.warning(f"Failed to read OpenClaw sessionFile for {case_id}: {e}")
 
     # 2) SQLite-era trajectory export (requires retained --state-dir)
-    session_id = (openclaw_json or {}).get("sessionId") or ""
+    session_id = (
+        (openclaw_json or {}).get("sessionId")
+        or ((openclaw_json or {}).get("result") or {}).get("meta", {}).get("agentMeta", {}).get("sessionId")
+        or ""
+    )
     if session_id:
         session_key = build_explicit_openclaw_session_key(session_id)
         export_name = f"aeh-{case_id}"

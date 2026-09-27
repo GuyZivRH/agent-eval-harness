@@ -96,9 +96,18 @@ def _parse_openclaw_envelope(
     stdout_str = stdout.decode(errors="replace") if isinstance(stdout, bytes) else stdout
     stderr_str = stderr.decode(errors="replace") if isinstance(stderr, bytes) else stderr
     
+    def normalize(data):
+        # Gateway-backed `openclaw agent --json` wraps the same agent result
+        # under `result`; isolated `agent exec` returns it at the top level.
+        if isinstance(data, dict) and isinstance(data.get("result"), dict):
+            result = data["result"]
+            if "meta" in result or "payloads" in result:
+                return {**result, **{k: v for k, v in data.items() if k != "result"}}
+        return data
+
     # Try direct JSON parse first
     try:
-        data = json.loads(stdout_str)
+        data = normalize(json.loads(stdout_str))
         error_msg = data.get("error", {}).get("message") or ""
         return data, stderr_str + error_msg
     except json.JSONDecodeError:
@@ -123,7 +132,7 @@ def _parse_openclaw_envelope(
                     break
         
         json_str = stdout_str[start:end]
-        data = json.loads(json_str)
+        data = normalize(json.loads(json_str))
         error_msg = data.get("error", {}).get("message") or ""
         return data, stderr_str + error_msg
     except (json.JSONDecodeError, ValueError):
