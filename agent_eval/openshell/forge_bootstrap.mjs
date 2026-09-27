@@ -24,7 +24,15 @@ try {
     // tables. Match Forge's bootstrap, using the image's own schema owner.
     db.exec('PRAGMA auto_vacuum = NONE; VACUUM;');
     const dist = '/opt/openclaw/node_modules/openclaw/dist';
-    const modules = fs.readdirSync(dist).filter(n => /^openclaw-agent-db-maintenance-.*\.js$/.test(n));
+    const files = fs.readdirSync(dist);
+    // OpenClaw 2026.9 ships the public database facade as an .mjs module;
+    // older Forge images exposed the maintenance entry point as .js.
+    const modern = files.filter(n => /^openclaw-agent-db-[^.]+\.mjs$/.test(n) &&
+      !n.includes('-contract-') && !n.includes('-lease-') && !n.includes('-readonly-') && !n.includes('-registry-'));
+    const legacy = files.filter(n => /^openclaw-agent-db-maintenance-.*\.js$/.test(n));
+    const modules = modern.length === 2 ? modern.filter(n =>
+      fs.readFileSync(path.join(dist, n), 'utf8').includes('export { IncognitoAgentDatabasePathCollisionError'))
+      : modern.length === 1 ? modern : legacy;
     if (modules.length !== 1) throw new Error('Expected one image database initializer');
     const maintenance = await import(pathToFileURL(path.join(dist, modules[0])).href);
     const initialize = Object.values(maintenance).find(v => typeof v === 'function' && v.name === 'ensureOpenClawAgentDatabaseSchema');
