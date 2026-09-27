@@ -41,9 +41,16 @@ def test_forge_brief_continuation_respects_publication_and_claim():
     attention = _forge_brief_continuation({"publishedScope": "attention"})
     assert "complete the full run" in attention
     pending = _forge_brief_continuation({
-        "evidenceId": "ev-1", "batchesPlanned": 7, "batchesCompleted": 3,
+        "evidenceId": "ev-1", "sealed": True,
+        "batchesPlanned": 7, "batchesCompleted": 3,
     })
     assert "do not spawn duplicate readers" in pending
+    unsealed = _forge_brief_continuation({
+        "evidenceId": "ev-1", "sealed": False,
+        "batchesPlanned": 4, "batchesCompleted": 0,
+    })
+    assert "Seal this claim now" in unsealed
+    assert "no child reader can start yet" in unsealed
     complete = _forge_brief_continuation({
         "evidenceId": "ev-1", "sealed": True,
         "batchesPlanned": 4, "batchesCompleted": 4,

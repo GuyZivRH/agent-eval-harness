@@ -131,6 +131,14 @@ def _forge_brief_continuation(state: dict) -> str | None:
         except (TypeError, ValueError):
             return None
     if state.get("evidenceId"):
+        if state.get("sealed") is False:
+            return (
+                "Continue the existing daily briefing evidence claim; do not sweep again. "
+                "The selected batch plan is not sealed, so no child reader can start yet. "
+                "Seal this claim now with the skill's tool, then launch the declared "
+                "bounded readers and complete the full brief.json. Do not wait for "
+                "batch results before sealing or replace publication with chat text."
+            )
         if state.get("batchesPlanned", 0) > state.get("batchesCompleted", 0):
             return (
                 "Continue the same daily briefing evidence claim. Some declared batch readers "
