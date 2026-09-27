@@ -1676,6 +1676,21 @@ async def _run_case(
                 output_dir = staged_case / "output"
                 output_dir.mkdir(exist_ok=True)
                 (output_dir / "response.txt").write_text(response_text)
+                if forge_image and case_id == "morning-briefing":
+                    publication = await _forge_brief_progress(sandbox, name)
+                    if publication.get("publishedScope") == "full":
+                        brief_path = output_dir / "brief.json"
+                        await sandbox.download(name, "/sandbox/brief.json", brief_path)
+                        brief = json.loads(brief_path.read_text())
+                        if brief.get("scope") != "full":
+                            raise RuntimeError("Downloaded Forge brief is not a full publication")
+                        (output_dir / "agent_response.txt").write_text(response_text)
+                        (output_dir / "response.txt").write_text(
+                            json.dumps(brief, indent=2, ensure_ascii=False)
+                        )
+                        logger.info("Full published brief staged as judged case output")
+                    else:
+                        logger.warning("No full published brief available for briefing judges")
 
                 try:
                     events = await _harvest_openclaw_events(
