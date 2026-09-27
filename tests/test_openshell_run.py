@@ -91,7 +91,8 @@ def test_forge_refuses_ground_truth_for_another_mailbox():
 def test_forge_waits_for_pending_children_before_resuming_parent(caplog):
     import asyncio
     caplog.set_level(logging.INFO)
-    pending = {"evidenceId": "ev-1", "batchesPlanned": 7, "batchesCompleted": 3}
+    pending = {"evidenceId": "ev-1", "sealed": True,
+               "batchesPlanned": 7, "batchesCompleted": 3}
     completed = {**pending, "batchesCompleted": 7}
     with (patch("agent_eval.openshell.run._forge_brief_progress", new_callable=AsyncMock,
                 return_value=completed) as progress,
@@ -111,6 +112,18 @@ def test_forge_does_not_wait_for_stale_attention_batches():
           patch("agent_eval.openshell.run.asyncio.sleep", new_callable=AsyncMock) as sleep):
         state = asyncio.run(_forge_wait_for_batches(SimpleNamespace(), "sb", stale, 180))
     assert state == stale
+    progress.assert_not_awaited()
+    sleep.assert_not_awaited()
+
+
+def test_forge_does_not_wait_for_unsealed_batch_plan():
+    import asyncio
+    unsealed = {"publishedScope": "attention", "evidenceId": "ev-1",
+                "sealed": False, "batchesPlanned": 4, "batchesCompleted": 0}
+    with (patch("agent_eval.openshell.run._forge_brief_progress", new_callable=AsyncMock) as progress,
+          patch("agent_eval.openshell.run.asyncio.sleep", new_callable=AsyncMock) as sleep):
+        state = asyncio.run(_forge_wait_for_batches(SimpleNamespace(), "sb", unsealed, 180))
+    assert state == unsealed
     progress.assert_not_awaited()
     sleep.assert_not_awaited()
 

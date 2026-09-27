@@ -175,10 +175,11 @@ async def _forge_wait_for_batches(
     An unchanged publication scope is expected during fan-out, not evidence of
     a stalled agent. This reads only result counts, never message contents.
     """
-    # The attention publication ends its claim but can leave an old sealed
-    # manifest on disk. Those batches are not active children: immediately
-    # start the full pass instead of waiting three minutes on stale counts.
-    if (not state.get("evidenceId") or not state.get("batchesPlanned")
+    # Batch files can be planned during the sweep, but child readers cannot
+    # start until the claim is sealed. Waiting on an unsealed plan burns the
+    # full 180-second budget for results that cannot exist yet.
+    if (not state.get("evidenceId") or not state.get("sealed")
+            or not state.get("batchesPlanned")
             or state.get("batchesCompleted", 0) >= state["batchesPlanned"]):
         return state
     last_completed = state.get("batchesCompleted", 0)
@@ -191,7 +192,7 @@ async def _forge_wait_for_batches(
             logger.info("Briefing batches: %s/%s complete", completed,
                         state.get("batchesPlanned", 0))
             last_completed = completed
-        if (state.get("publishedScope") == "full"
+        if (state.get("publishedScope") == "full" or not state.get("sealed")
                 or not _forge_brief_continuation(state)
                 or state.get("batchesCompleted", 0) >= state.get("batchesPlanned", 0)):
             break
