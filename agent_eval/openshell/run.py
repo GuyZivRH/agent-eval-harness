@@ -233,7 +233,9 @@ def _openclaw_model_catalog_entry(model_id: str, name: str = "", api: str = "") 
     return entry
 
 
-def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
+def build_openclaw_eval_config(
+    providers: dict, model: str, *, forge_image: bool = False
+) -> tuple:
     """Build /sandbox/openclaw-eval.json and the --model OpenClaw should receive.
 
     Pipeline --model is often a LiteLLM alias (claude-sonnet). OpenClaw needs
@@ -259,6 +261,26 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
             "providers": {},
         },
     }
+    if forge_image:
+        # The image-owned daily-briefing skill fans out sealed evidence to
+        # brief-reader children. Mirror the image's least-privilege profile in
+        # headless eval; otherwise the skill cannot complete its full run.
+        # The image's OpenClaw release rejects the legacy defaults.models key.
+        del openclaw_config["agents"]["defaults"]["models"]
+        openclaw_config["agents"]["defaults"]["modelPolicy"] = {
+            "allow": [qualified]
+        }
+        openclaw_config["agents"]["ownership"] = "explicit"
+        openclaw_config["agents"]["entries"] = {
+            "main": {
+                "workspace": "/sandbox",
+                "subagents": {"allowAgents": ["brief-reader"]},
+            },
+            "brief-reader": {
+                "workspace": "/sandbox",
+                "tools": {"allow": ["read", "write"]},
+            },
+        }
     for name, provider_cfg in providers.items():
         provider_cfg = provider_cfg or {}
         raw_base = provider_cfg.get("baseUrl", "")
@@ -1373,7 +1395,7 @@ async def _run_case(
                 sandbox_env["TMPDIR"] = str(_OPENCLAW_TMP_DIR)
                 if providers:
                     openclaw_config, openclaw_model = build_openclaw_eval_config(
-                        providers, model
+                        providers, model, forge_image=forge_image
                     )
                     # Custom providers are openai-compatible (LiteLLM / inference.local).
                     # Anthropic env makes OpenClaw discover api.anthropic.com.

@@ -725,6 +725,24 @@ class TestOpenclawEvalConfig:
             == "inference/claude-sonnet"
         )
 
+    def test_forge_image_configures_isolated_brief_reader(self):
+        cfg, _ = build_openclaw_eval_config(
+            self._WXNB_PROVIDERS, "claude-sonnet", forge_image=True
+        )
+        entries = cfg["agents"]["entries"]
+        assert "models" not in cfg["agents"]["defaults"]
+        assert cfg["agents"]["defaults"]["modelPolicy"]["allow"] == [
+            "inference/claude-sonnet"
+        ]
+        assert cfg["agents"]["ownership"] == "explicit"
+        assert entries["main"]["workspace"] == "/sandbox"
+        assert entries["main"]["subagents"]["allowAgents"] == ["brief-reader"]
+        assert entries["brief-reader"]["workspace"] == "/sandbox"
+        assert entries["brief-reader"]["tools"]["allow"] == ["read", "write"]
+
+        generic, _ = build_openclaw_eval_config(self._WXNB_PROVIDERS, "claude-sonnet")
+        assert "entries" not in generic["agents"]
+
     def test_keeps_already_qualified_model(self):
         assert (
             qualify_openclaw_model("inference/claude-sonnet", self._WXNB_PROVIDERS)
