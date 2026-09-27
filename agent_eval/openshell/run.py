@@ -1720,7 +1720,11 @@ async def _run_case(
                         session_key = None
                     scene = _load_scene(config)
                     expected_user = str((scene or {}).get("m365", {}).get("user") or "")
-                    for continuation in range(3):
+                    # A reader can hit the model output limit and need a retry.
+                    # Keep going while the overall case budget and evidence
+                    # deadline permit; three turns are not enough when one is
+                    # spent recovering a child before publication.
+                    for continuation in range(12):
                         state = await _forge_brief_progress(sandbox, name)
                         _forge_assert_mailbox_identity(state, expected_user)
                         logger.info("Briefing publication progress: %s", state)
