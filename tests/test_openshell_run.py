@@ -852,6 +852,24 @@ class TestOpenclawEvalConfig:
         assert actual["maxTokens"] == 8192
         assert actual["reasoning"] is False
 
+    def test_forge_flash_has_room_for_batch_result_after_reasoning(self):
+        providers = {"inference": {"baseUrl": "https://model.example/v1", "models": [
+            {"id": "rits/zai-org/GLM-5-3-Flash"},
+        ]}}
+        cfg, _ = build_openclaw_eval_config(
+            providers, "inference/rits/zai-org/GLM-5-3-Flash", forge_image=True,
+        )
+        actual = cfg["models"]["providers"]["inference"]["models"][0]
+        assert actual["maxTokens"] == 16384
+        # The eval.yaml may list only regular GLM while the PipelineRun
+        # selects Flash. The fallback catalog entry needs the same limit.
+        providers["inference"]["models"] = [{"id": "rits/zai-org/glm-5-3"}]
+        cfg, _ = build_openclaw_eval_config(
+            providers, "inference/rits/zai-org/GLM-5-3-Flash", forge_image=True,
+        )
+        actual = cfg["models"]["providers"]["inference"]["models"][1]
+        assert actual["maxTokens"] == 16384
+
     def test_preserves_private_network_provider_opt_in(self):
         providers = {
             "forge-ai-gateway": {
