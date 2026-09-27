@@ -16,6 +16,7 @@ from agent_eval.openshell.run import (
     _M365_HEADER_PATH,
     _child_env,
     _ensure_m365_credentials,
+    _forge_assert_mailbox_identity,
     _forge_brief_continuation,
     _forge_case_timeout,
     _forge_brief_progress,
@@ -64,6 +65,20 @@ def test_forge_brief_progress_reads_only_state():
     command = sandbox.exec.call_args.args[1]
     assert command[:2] == ["node", "-e"]
     assert "message" not in command[2]
+
+
+def test_forge_refuses_ground_truth_for_another_mailbox():
+    state = {
+        "evidenceId": "ev-1",
+        "mailboxAccount": "tbx-demo4@dev.mscloud.ibm.com",
+    }
+    with pytest.raises(RuntimeError, match="refusing mismatched ground-truth scoring"):
+        _forge_assert_mailbox_identity(state, "tbx-demo2@dev.mscloud.ibm.com")
+    _forge_assert_mailbox_identity(state, "TBX-DEMO4@dev.mscloud.ibm.com")
+    _forge_assert_mailbox_identity(state, None)
+    _forge_assert_mailbox_identity({}, "tbx-demo2@dev.mscloud.ibm.com")
+    with pytest.raises(RuntimeError, match="no mailbox identity was collected"):
+        _forge_assert_mailbox_identity({"evidenceId": "ev-1"}, "tbx-demo2@dev.mscloud.ibm.com")
 
 
 def test_forge_waits_for_pending_children_before_resuming_parent():

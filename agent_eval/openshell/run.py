@@ -70,7 +70,7 @@ _M365_PLACEHOLDER_MARKERS = (
 
 
 async def _forge_brief_progress(sandbox: OpenShellSandbox, name: str) -> dict:
-    """Read only publication progress, never mailbox or brief contents."""
+    """Read publication and mailbox-identity metadata, never message contents."""
     script = (
         "const fs=require('node:fs');"
         "function read(p){try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return null}}"
@@ -90,6 +90,7 @@ async def _forge_brief_progress(sandbox: OpenShellSandbox, name: str) -> dict:
         "console.log(JSON.stringify({publishedScope:brief?.scope??null,"
         "runPhase:run?.phase??null,evidenceId:run?.evidenceId??null,"
         "deadline:run?.deadline??null,sealed:run?.sealed??null,"
+        "mailboxAccount:manifest?.microsoft365?.account?.mail??null,"
         "batchesPlanned:batches.length,batchesCompleted:completed}));"
     )
     result = await sandbox.exec(name, ["node", "-e", script], timeout_s=10)
@@ -99,6 +100,23 @@ async def _forge_brief_progress(sandbox: OpenShellSandbox, name: str) -> dict:
     if not isinstance(state, dict):
         raise RuntimeError("Invalid Forge briefing publication state")
     return state
+
+
+def _forge_assert_mailbox_identity(state: dict, expected_user: str | None) -> None:
+    """Refuse to score a seeded scene against another delegated mailbox."""
+    if not expected_user or not state.get("evidenceId"):
+        return
+    actual = state.get("mailboxAccount")
+    if not isinstance(actual, str) or not actual.strip():
+        raise RuntimeError(
+            f"Forge scene expects mailbox {expected_user}, but no mailbox identity "
+            "was collected"
+        )
+    if actual.strip().casefold() != expected_user.strip().casefold():
+        raise RuntimeError(
+            f"Forge scene expects mailbox {expected_user}, but governed access "
+            f"returned {actual.strip()}; refusing mismatched ground-truth scoring"
+        )
 
 
 def _forge_brief_continuation(state: dict) -> str | None:
@@ -1139,7 +1157,11 @@ async def run_openshell(
         case_id = case_dir.name
         if isinstance(case_result, Exception):
             logger.error(f"Case {case_id} failed: {case_result}")
-            per_case[case_id] = {"exit_code": 1, "error": str(case_result)}
+            per_case[case_id] = {
+                "exit_code": 1,
+                "error": str(case_result),
+                "scoring_skip_reason": str(case_result),
+            }
             n_failed += 1
         else:
             per_case[case_id] = case_result
@@ -1665,8 +1687,11 @@ async def _run_case(
                     except (AttributeError, UnboundLocalError):
                         session_id = None
                         session_key = None
+                    scene = _load_scene(config)
+                    expected_user = str((scene or {}).get("m365", {}).get("user") or "")
                     for continuation in range(3):
                         state = await _forge_brief_progress(sandbox, name)
+                        _forge_assert_mailbox_identity(state, expected_user)
                         logger.info("Briefing publication progress: %s", state)
                         remaining = case_timeout_s - (
                             time.monotonic() - start_time
