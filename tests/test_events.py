@@ -40,6 +40,9 @@ class TestParseStreamEvents:
     def test_non_jsonl_content(self):
         assert parse_stream_events("this is plain text\nnot json at all") == []
 
+    def test_pretty_gateway_envelope_is_not_a_stream(self):
+        assert parse_stream_events('{\n  "status": "ok",\n  "count": 2,\n  "value": null\n}') == []
+
     def test_system_init_event(self):
         events = [make_system_init(model="claude-opus-4-6")]
         result = parse_stream_events(_to_stdout(events))

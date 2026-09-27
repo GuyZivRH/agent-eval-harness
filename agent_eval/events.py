@@ -115,6 +115,10 @@ def parse_stream_events(stdout_text, result_cap=DEFAULT_RESULT_CAP):
             obj = json.loads(line)
         except (json.JSONDecodeError, ValueError):
             continue
+        # Pretty-printed Gateway envelopes contain valid JSON scalar lines;
+        # those are not JSONL events and belong to the envelope fallback.
+        if not isinstance(obj, dict):
+            continue
 
         event_type = obj.get("type")
         if event_type == "assistant":

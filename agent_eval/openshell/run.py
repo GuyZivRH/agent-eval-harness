@@ -1517,6 +1517,20 @@ async def _run_case(
                 env=sandbox_env,
                 timeout_s=timeout,
             )
+            if forge_image and runner_type == "openclaw":
+                try:
+                    envelope = json.loads(result.stdout)
+                    if isinstance(envelope, dict):
+                        logger.info(
+                            "Gateway response shape top=%s result=%s meta=%s",
+                            sorted(envelope),
+                            sorted(envelope.get("result", {}))
+                            if isinstance(envelope.get("result"), dict) else [],
+                            sorted(envelope.get("meta", {}))
+                            if isinstance(envelope.get("meta"), dict) else [],
+                        )
+                except (json.JSONDecodeError, TypeError):
+                    logger.info("Gateway response is not a single JSON object")
             _log_model_diagnostics(case_id, openclaw_model, sandbox_env, name)
             duration_s = time.monotonic() - start_time
             if result.return_code:
