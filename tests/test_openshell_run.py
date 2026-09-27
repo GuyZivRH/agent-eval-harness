@@ -16,6 +16,8 @@ from agent_eval.openshell.run import (
     _M365_HEADER_PATH,
     _child_env,
     _ensure_m365_credentials,
+    _forge_brief_continuation,
+    _forge_brief_progress,
     _install_m365_file_auth,
     _m365_usable,
     _openai_compat_base_url,
@@ -26,6 +28,29 @@ from agent_eval.openshell.run import (
     build_openclaw_eval_config,
     qualify_openclaw_model,
 )
+
+
+def test_forge_brief_continuation_respects_publication_and_claim():
+    assert _forge_brief_continuation({"publishedScope": "full"}) is None
+    active = _forge_brief_continuation({"evidenceId": "ev-1", "runPhase": "sweep"})
+    assert "Do not start another sweep" in active
+    attention = _forge_brief_continuation({"publishedScope": "attention"})
+    assert "complete the full run" in attention
+
+
+def test_forge_brief_continuation_stops_on_expired_evidence():
+    assert _forge_brief_continuation({"evidenceId": "ev-1", "deadline": "2000-01-01T00:00:00Z"}) is None
+
+
+def test_forge_brief_progress_reads_only_state():
+    import asyncio
+    sandbox = SimpleNamespace(exec=AsyncMock(return_value=SimpleNamespace(
+        return_code=0, stdout='{"publishedScope":"attention","runPhase":"sealed"}', stderr="")))
+    state = asyncio.run(_forge_brief_progress(sandbox, "sb"))
+    assert state == {"publishedScope": "attention", "runPhase": "sealed"}
+    command = sandbox.exec.call_args.args[1]
+    assert command[:2] == ["node", "-e"]
+    assert "message" not in command[2]
 
 
 @pytest.mark.parametrize("code,expected", [(0, True), (3, False), (2, True), (127, True)])

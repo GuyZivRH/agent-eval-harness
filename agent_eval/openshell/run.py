@@ -69,6 +69,53 @@ _M365_PLACEHOLDER_MARKERS = (
 )
 
 
+async def _forge_brief_progress(sandbox: OpenShellSandbox, name: str) -> dict:
+    """Read only publication progress, never mailbox or brief contents."""
+    script = (
+        "const fs=require('node:fs');"
+        "function read(p){try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return null}}"
+        "const brief=read('/sandbox/brief.json');"
+        "const run=read('/sandbox/.openclaw/tmp/brief.run.json');"
+        "console.log(JSON.stringify({publishedScope:brief?.scope??null,"
+        "runPhase:run?.phase??null,evidenceId:run?.evidenceId??null,"
+        "deadline:run?.deadline??null,sealed:run?.sealed??null}));"
+    )
+    result = await sandbox.exec(name, ["node", "-e", script], timeout_s=10)
+    if result.return_code:
+        raise RuntimeError("Could not inspect Forge briefing publication state")
+    state = json.loads(result.stdout)
+    if not isinstance(state, dict):
+        raise RuntimeError("Invalid Forge briefing publication state")
+    return state
+
+
+def _forge_brief_continuation(state: dict) -> str | None:
+    """Choose a bounded follow-up without discarding an active evidence claim."""
+    if state.get("publishedScope") == "full":
+        return None
+    if state.get("deadline"):
+        try:
+            deadline = datetime.fromisoformat(state["deadline"].replace("Z", "+00:00"))
+            if deadline.timestamp() <= time.time():
+                return None
+        except (TypeError, ValueError):
+            return None
+    if state.get("evidenceId"):
+        return (
+            "Continue the daily briefing already in progress from its current governed "
+            "evidence claim. Do not start another sweep or discard the manifest. Seal if "
+            "needed, then finish every declared batch, compose, and publish the full "
+            "brief.json using the skill's tools. An attention brief is interim only. "
+            "Do not replace publication with a chat summary; report any blocker honestly."
+        )
+    return (
+        "Continue the daily briefing. If an attention brief exists, it is interim: "
+        "start and complete the full run now. Otherwise resume the skill from the "
+        "beginning. Review the governed evidence in bounded batches, compose and "
+        "publish a full brief.json. Do not claim completion before publication."
+    )
+
+
 def _m365_usable(value: Optional[str]) -> bool:
     """True when an M365 env value is present and not a template placeholder."""
     if value is None:
@@ -1535,6 +1582,49 @@ async def _run_case(
                         )
                 except (json.JSONDecodeError, TypeError):
                     logger.info("Gateway response is not a single JSON object")
+                if case_id == "morning-briefing" and result.return_code == 0:
+                    # The Gateway can end a healthy turn after the initial sweep.
+                    # Resume its existing session, not the evidence sweep, while
+                    # the publication claim and case budget are still live.
+                    try:
+                        session_id = (
+                            envelope.get("result", {}).get("meta", {})
+                            .get("agentMeta", {}).get("sessionId")
+                        ) if isinstance(envelope, dict) else None
+                    except (AttributeError, UnboundLocalError):
+                        session_id = None
+                    prior_state = None
+                    for continuation in range(3):
+                        state = await _forge_brief_progress(sandbox, name)
+                        logger.info("Briefing publication progress: %s", state)
+                        follow_up = _forge_brief_continuation(state)
+                        remaining = (config.execution.timeout or 600) - (
+                            time.monotonic() - start_time
+                        )
+                        if not follow_up or remaining < 60 or not session_id:
+                            break
+                        if state == prior_state:
+                            logger.warning("Briefing continuation made no publication progress")
+                            break
+                        prior_state = state
+                        next_cmd = [
+                            "openclaw", "agent", "--agent", "main", "--json",
+                            "--model", openclaw_model, "--timeout", str(int(remaining)),
+                            "--session-id", session_id, "--message", follow_up,
+                        ]
+                        logger.info("Continuing briefing in sandbox session (turn %s)", continuation + 2)
+                        result = await sandbox.exec(
+                            name, next_cmd, workdir="/sandbox", env=sandbox_env,
+                            timeout_s=int(remaining) + 30,
+                        )
+                        if result.return_code:
+                            logger.warning("Briefing continuation failed rc=%s stderr=%r",
+                                           result.return_code, (result.stderr or "")[:400])
+                            break
+                    final_state = await _forge_brief_progress(sandbox, name)
+                    logger.info("Final briefing publication progress: %s", final_state)
+                    if final_state.get("publishedScope") != "full":
+                        logger.warning("Full briefing not published in evaluation budget")
             _log_model_diagnostics(case_id, openclaw_model, sandbox_env, name)
             duration_s = time.monotonic() - start_time
             if result.return_code:
