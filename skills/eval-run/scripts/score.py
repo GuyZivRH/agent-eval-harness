@@ -309,6 +309,8 @@ def load_case_record(case_dir, config, run_id=None, runs_dir=None):
                 with open(run_result_path) as f:
                     meta = json.load(f)
                 per_case = meta.get("per_case", {}).get(case_id, {})
+                if per_case.get("scoring_skip_reason"):
+                    record["scoring_skip_reason"] = per_case["scoring_skip_reason"]
                 record["exit_code"] = per_case.get(
                     "exit_code", meta.get("exit_code"))
                 record["duration_s"] = per_case.get(
@@ -1564,6 +1566,12 @@ def score_cases(judges, case_dirs, config, run_id=None, samples_override=None):
     def _score_case(case_dir):
         case_id = case_dir.name
         record = load_case_record(case_dir, config, run_id=run_id)
+        if record.get("scoring_skip_reason"):
+            reason = str(record["scoring_skip_reason"])
+            return case_id, {
+                name: {"value": None, "error": reason, "judge_type": judge_type}
+                for name, _, _, judge_type, _ in judges
+            }
         case_results = {}
         for name, scorer, condition, judge_type, judge_samples in judges:
             # Step-scoped judges see that step's trace; others the whole case.

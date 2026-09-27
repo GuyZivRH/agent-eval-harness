@@ -41,6 +41,24 @@ def test_out_of_range_value_becomes_an_error_sample(tmp_path, capsys):
     assert "WARNING" in capsys.readouterr().err
 
 
+def test_invalid_publication_is_not_sent_to_judges(tmp_path, monkeypatch):
+    config = _config(tmp_path, "  - {name: testability, feedback_type: int, "
+                               "score_range: [0, 2], check: \"return (2, 'should not run')\"}\n")
+    monkeypatch.setattr(
+        sc, "load_case_record",
+        lambda *args, **kwargs: {
+            "scoring_skip_reason": "Forge full brief.json was not published",
+            "output_content": "An attention brief and a plausible chat response",
+        },
+    )
+    result = sc.score_cases(sc.load_judges(config), [_case(tmp_path)], config)
+    entry = result["per_case"]["case-1"]["testability"]
+    assert entry["value"] is None
+    assert entry["error"] == "Forge full brief.json was not published"
+    assert result["aggregated"]["testability"]["scored_cases"] == 0
+    assert result["aggregated"]["testability"]["errored_cases"] == 1
+
+
 def test_out_of_range_value_is_excluded_from_the_aggregate(tmp_path):
     config = _config(tmp_path, "  - {name: testability, feedback_type: int, "
                                "score_range: [0, 2], check: \"return (4, 'r')\"}\n")

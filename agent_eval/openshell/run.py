@@ -1773,6 +1773,14 @@ async def _run_case(
                         logger.info("Full published brief staged as judged case output")
                     else:
                         logger.warning("No full published brief available for briefing judges")
+                        # A successful OpenClaw turn is not a successful Forge
+                        # evaluation when the required workspace artifact is
+                        # still an attention brief. Do not score chat text as
+                        # though it were the published full briefing.
+                        case_result["exit_code"] = 1
+                        case_result["scoring_skip_reason"] = (
+                            "Forge full brief.json was not published"
+                        )
 
                 try:
                     events = await _harvest_openclaw_events(
@@ -1817,7 +1825,7 @@ async def _run_case(
             (case_output / "stdout.log").write_text(result.stdout)
             (case_output / "stderr.log").write_text(result.stderr)
 
-            logger.info(f"Case {case_id} completed with exit code {result.return_code}")
+            logger.info(f"Case {case_id} completed with exit code {case_result['exit_code']}")
             return case_result
 
         finally:

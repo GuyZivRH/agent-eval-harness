@@ -101,6 +101,32 @@ def test_forge_brief_is_the_only_judged_output_file(tmp_path):
     assert record["output_file"].endswith("/output/response.txt")
 
 
+def test_incomplete_forge_publication_reason_reaches_scoring_record(tmp_path):
+    import importlib.util
+    from agent_eval.config import EvalConfig
+
+    script = Path(__file__).parents[1] / "skills/eval-run/scripts/score.py"
+    spec = importlib.util.spec_from_file_location("forge_score_skip_test", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    case = tmp_path / "morning-briefing"
+    case.mkdir()
+    run = tmp_path / "case-run"
+    run.mkdir()
+    (run / "run_result.json").write_text(json.dumps({
+        "exit_code": 1,
+        "per_case": {"morning-briefing": {
+            "exit_code": 1,
+            "scoring_skip_reason": "Forge full brief.json was not published",
+        }},
+    }))
+    record = module.load_case_record(
+        case, EvalConfig(), run_id="case-run", runs_dir=tmp_path,
+    )
+    assert record["exit_code"] == 1
+    assert record["scoring_skip_reason"] == "Forge full brief.json was not published"
+
+
 @pytest.mark.parametrize("code,expected", [(0, True), (3, False), (2, True), (127, True)])
 def test_optional_openclaw_output_probe(code, expected):
     import asyncio
