@@ -1622,7 +1622,7 @@ async def _run_case(
                         next_cmd = [
                             "openclaw", "agent", "--agent", "main", "--json",
                             "--model", openclaw_model, "--timeout", str(int(remaining)),
-                            "--thinking", "minimal",
+                            "--thinking", "off",
                             *session_args, "--message", follow_up,
                         ]
                         logger.info("Continuing briefing in sandbox session (turn %s)", continuation + 2)
