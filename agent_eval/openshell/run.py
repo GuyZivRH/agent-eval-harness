@@ -534,13 +534,17 @@ async def _harvest_openclaw_events(
             logger.warning(f"Failed to read OpenClaw sessionFile for {case_id}: {e}")
 
     # 2) SQLite-era trajectory export (requires retained --state-dir)
+    gateway_agent_meta = ((openclaw_json or {}).get("result") or {}).get("meta", {}).get("agentMeta", {})
     session_id = (
         (openclaw_json or {}).get("sessionId")
-        or ((openclaw_json or {}).get("result") or {}).get("meta", {}).get("agentMeta", {}).get("sessionId")
+        or gateway_agent_meta.get("sessionId")
         or ""
     )
     if session_id:
-        session_key = build_explicit_openclaw_session_key(session_id)
+        gateway_key = gateway_agent_meta.get("sessionFile")
+        session_key = (gateway_key if isinstance(gateway_key, str)
+                       and gateway_key.startswith("agent:")
+                       else build_explicit_openclaw_session_key(session_id))
         export_name = f"aeh-{case_id}"
         try:
             export_result = await sandbox.exec(
@@ -1587,12 +1591,18 @@ async def _run_case(
                     # Resume its existing session, not the evidence sweep, while
                     # the publication claim and case budget are still live.
                     try:
+                        agent_meta = (
+                            envelope.get("result", {}).get("meta", {}).get("agentMeta", {})
+                        ) if isinstance(envelope, dict) else {}
                         session_id = (
-                            envelope.get("result", {}).get("meta", {})
-                            .get("agentMeta", {}).get("sessionId")
-                        ) if isinstance(envelope, dict) else None
+                            agent_meta.get("sessionId")
+                        )
+                        session_key = agent_meta.get("sessionFile")
+                        if not isinstance(session_key, str) or not session_key.startswith("agent:"):
+                            session_key = None
                     except (AttributeError, UnboundLocalError):
                         session_id = None
+                        session_key = None
                     prior_state = None
                     for continuation in range(3):
                         state = await _forge_brief_progress(sandbox, name)
@@ -1601,16 +1611,19 @@ async def _run_case(
                         remaining = (config.execution.timeout or 600) - (
                             time.monotonic() - start_time
                         )
-                        if not follow_up or remaining < 60 or not session_id:
+                        if not follow_up or remaining < 60 or not (session_key or session_id):
                             break
                         if state == prior_state:
                             logger.warning("Briefing continuation made no publication progress")
                             break
                         prior_state = state
+                        session_args = (["--session-key", session_key] if session_key
+                                        else ["--session-id", session_id])
                         next_cmd = [
                             "openclaw", "agent", "--agent", "main", "--json",
                             "--model", openclaw_model, "--timeout", str(int(remaining)),
-                            "--session-id", session_id, "--message", follow_up,
+                            "--thinking", "minimal",
+                            *session_args, "--message", follow_up,
                         ]
                         logger.info("Continuing briefing in sandbox session (turn %s)", continuation + 2)
                         result = await sandbox.exec(
