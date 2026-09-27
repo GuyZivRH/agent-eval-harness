@@ -94,6 +94,18 @@ def test_forge_waits_for_pending_children_before_resuming_parent():
     sleep.assert_awaited_once()
 
 
+def test_forge_does_not_wait_for_stale_attention_batches():
+    import asyncio
+    stale = {"publishedScope": "attention", "evidenceId": None,
+             "batchesPlanned": 2, "batchesCompleted": 0}
+    with (patch("agent_eval.openshell.run._forge_brief_progress", new_callable=AsyncMock) as progress,
+          patch("agent_eval.openshell.run.asyncio.sleep", new_callable=AsyncMock) as sleep):
+        state = asyncio.run(_forge_wait_for_batches(SimpleNamespace(), "sb", stale, 180))
+    assert state == stale
+    progress.assert_not_awaited()
+    sleep.assert_not_awaited()
+
+
 def test_forge_brief_is_the_only_judged_output_file(tmp_path):
     """AEH chooses the first file in output/, so diagnostics must stay outside it."""
     import importlib.util

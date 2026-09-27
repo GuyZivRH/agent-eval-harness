@@ -163,7 +163,11 @@ async def _forge_wait_for_batches(
     An unchanged publication scope is expected during fan-out, not evidence of
     a stalled agent. This reads only result counts, never message contents.
     """
-    if not state.get("batchesPlanned") or state.get("batchesCompleted", 0) >= state["batchesPlanned"]:
+    # The attention publication ends its claim but can leave an old sealed
+    # manifest on disk. Those batches are not active children: immediately
+    # start the full pass instead of waiting three minutes on stale counts.
+    if (not state.get("evidenceId") or not state.get("batchesPlanned")
+            or state.get("batchesCompleted", 0) >= state["batchesPlanned"]):
         return state
     until = time.monotonic() + max(0, min(budget_s, 180))
     while time.monotonic() < until:
