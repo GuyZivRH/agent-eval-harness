@@ -158,6 +158,14 @@ async def _forge_wait_for_batches(
     return state
 
 
+def _forge_case_timeout(configured: int | None, forge_image: bool, case_id: str) -> int:
+    """Give the bounded full-mailbox briefing enough time to finish its fan-out."""
+    timeout = int(configured or 600)
+    if forge_image and case_id == "morning-briefing":
+        return max(timeout, 1800)
+    return timeout
+
+
 def _m365_usable(value: Optional[str]) -> bool:
     """True when an M365 env value is present and not a template placeholder."""
     if value is None:
@@ -1319,6 +1327,11 @@ async def _run_case(
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
             forge_image = os.environ.get("AGENT_EVAL_OPENSHELL_WORKSPACE") == "forge-image"
+            case_timeout_s = _forge_case_timeout(
+                config.execution.timeout, forge_image, case_id,
+            )
+            if case_timeout_s != (config.execution.timeout or 600):
+                logger.info("Forge morning-briefing timeout extended to %ss", case_timeout_s)
             if forge_image:
                 from agent_eval.openshell.forge import prepare_forge_sandbox
 
@@ -1591,7 +1604,7 @@ async def _run_case(
                         raise RuntimeError("Sandbox-local OpenClaw Gateway did not become healthy")
                     cmd = ["openclaw", "agent", "--agent", "main", "--json",
                            "--model", openclaw_model, "--timeout",
-                           str(config.execution.timeout or 600), "--message", prompt]
+                           str(case_timeout_s), "--message", prompt]
                 else:
                     cmd = build_openclaw_argv(
                         model=openclaw_model,
@@ -1612,7 +1625,7 @@ async def _run_case(
                 name,
                 cmd[:-1] if len(cmd) > 1 else cmd,
             )
-            timeout = (config.execution.timeout or 600) + 60
+            timeout = case_timeout_s + 60
             result = await sandbox.exec(
                 name,
                 cmd,
@@ -1655,7 +1668,7 @@ async def _run_case(
                     for continuation in range(3):
                         state = await _forge_brief_progress(sandbox, name)
                         logger.info("Briefing publication progress: %s", state)
-                        remaining = (config.execution.timeout or 600) - (
+                        remaining = case_timeout_s - (
                             time.monotonic() - start_time
                         )
                         if state.get("batchesPlanned", 0) > state.get("batchesCompleted", 0):
@@ -1663,7 +1676,7 @@ async def _run_case(
                                 sandbox, name, state, remaining - 60,
                             )
                             logger.info("Briefing batch wait progress: %s", state)
-                            remaining = (config.execution.timeout or 600) - (
+                            remaining = case_timeout_s - (
                                 time.monotonic() - start_time
                             )
                         follow_up = _forge_brief_continuation(state)

@@ -17,6 +17,7 @@ from agent_eval.openshell.run import (
     _child_env,
     _ensure_m365_credentials,
     _forge_brief_continuation,
+    _forge_case_timeout,
     _forge_brief_progress,
     _forge_wait_for_batches,
     _install_m365_file_auth,
@@ -45,6 +46,13 @@ def test_forge_brief_continuation_respects_publication_and_claim():
 
 def test_forge_brief_continuation_stops_on_expired_evidence():
     assert _forge_brief_continuation({"evidenceId": "ev-1", "deadline": "2000-01-01T00:00:00Z"}) is None
+
+
+def test_forge_morning_briefing_has_time_for_full_mailbox_fanout():
+    assert _forge_case_timeout(900, True, "morning-briefing") == 1800
+    assert _forge_case_timeout(2400, True, "morning-briefing") == 2400
+    assert _forge_case_timeout(900, True, "analysis-panel") == 900
+    assert _forge_case_timeout(900, False, "morning-briefing") == 900
 
 
 def test_forge_brief_progress_reads_only_state():
