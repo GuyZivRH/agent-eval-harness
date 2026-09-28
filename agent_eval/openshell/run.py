@@ -489,16 +489,15 @@ def build_openclaw_eval_config(
             for field in ("reasoning", "input", "cost", "contextWindow", "maxTokens"):
                 if field in m:
                     entry[field] = m[field]
-            if forge_image and "maxTokens" not in m and "GLM-5-3-Flash" in mid:
-                # The Forge briefing fans out evidence to child agents. In a
-                # live run, Flash spent ~8k output tokens on reasoning alone
-                # and stopped before its first result-file write. The generic
-                # 8192 default is therefore too small for this workload.
+            if forge_image and "maxTokens" not in m and "glm-5-3" in mid.lower():
+                # Both regular GLM and Flash can spend the generic 8192-token
+                # completion budget on reasoning before producing a response.
+                # Keep explicit per-model limits authoritative.
                 entry["maxTokens"] = 16384
             provider_entry["models"].append(entry)
         if name == provider_name and requested_id and requested_id not in seen:
             entry = _openclaw_model_catalog_entry(requested_id, requested_id, api)
-            if forge_image and "GLM-5-3-Flash" in requested_id:
+            if forge_image and "glm-5-3" in requested_id.lower():
                 entry["maxTokens"] = 16384
             provider_entry["models"].append(entry)
         openclaw_config["models"]["providers"][name] = provider_entry

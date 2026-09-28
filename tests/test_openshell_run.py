@@ -994,6 +994,20 @@ class TestOpenclawEvalConfig:
         actual = cfg["models"]["providers"]["inference"]["models"][1]
         assert actual["maxTokens"] == 16384
 
+    def test_forge_regular_glm_has_room_for_response_after_reasoning(self):
+        providers = {"inference": {"baseUrl": "https://model.example/v1", "models": [
+            {"id": "rits/zai-org/glm-5-3"},
+        ]}}
+        cfg, _ = build_openclaw_eval_config(
+            providers, "inference/rits/zai-org/glm-5-3", forge_image=True,
+        )
+        assert cfg["models"]["providers"]["inference"]["models"][0]["maxTokens"] == 16384
+        providers["inference"]["models"] = [{"id": "other-model"}]
+        cfg, _ = build_openclaw_eval_config(
+            providers, "inference/rits/zai-org/glm-5-3", forge_image=True,
+        )
+        assert cfg["models"]["providers"]["inference"]["models"][1]["maxTokens"] == 16384
+
     def test_preserves_private_network_provider_opt_in(self):
         providers = {
             "forge-ai-gateway": {
