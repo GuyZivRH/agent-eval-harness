@@ -241,6 +241,22 @@ def test_preflight_retries_one_transient_failure(code, error):
     assert sandbox.exec.call_count == 2
 
 
+@pytest.mark.parametrize("model,expected_timeout", [
+    ("inference/rits/zai-org/glm-5-3", 120),
+    ("inference/rits/zai-org/GLM-5-3-Flash", 30),
+])
+def test_preflight_timeout_matches_model_latency(model, expected_timeout):
+    import asyncio
+    from agent_eval.openshell.run import _run_openclaw_llm_preflight
+
+    sandbox = SimpleNamespace(exec=AsyncMock(return_value=SimpleNamespace(
+        return_code=0, stdout="LLM_PREFLIGHT_OK", stderr="")))
+    asyncio.run(_run_openclaw_llm_preflight(sandbox, "probe", Path("config"), model))
+    args = sandbox.exec.call_args
+    assert f"ctl.abort(),{expected_timeout * 1000}" in args.args[1][2]
+    assert args.kwargs["timeout_s"] == expected_timeout + 10
+
+
 @pytest.mark.parametrize("error,count", [
     ("LLM_PREFLIGHT_FAILED HTTP 401 unauthorized", 1),
     ("LLM_PREFLIGHT_FAILED HTTP 400 invalid model", 1),

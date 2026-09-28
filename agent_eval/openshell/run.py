@@ -519,6 +519,10 @@ async def _run_openclaw_llm_preflight(
     failures and avoids spending the full case timeout on an unreachable LLM.
     """
     provider, model_id = qualified_model.split("/", 1)
+    # The non-Flash GLM endpoint can take over 30 seconds to produce its first
+    # response. Keep the fast failure window for other models, but do not
+    # reject a healthy regular-GLM response before it arrives.
+    request_timeout_s = 120 if model_id.lower() == "rits/zai-org/glm-5-3" else 30
     script = (
         "const fs=require('fs');"
         "const [configPath,providerName,modelId]=process.argv.slice(1);"
@@ -532,7 +536,7 @@ async def _run_openclaw_llm_preflight(
         "const headers={'content-type':'application/json'};"
         "if(apiKey&&apiKey!=='empty')headers.authorization='Bearer '+apiKey;"
         "const ctl=new AbortController();"
-        "const timer=setTimeout(()=>ctl.abort(),30000);"
+        f"const timer=setTimeout(()=>ctl.abort(),{request_timeout_s * 1000});"
         "fetch(url,{method:'POST',headers,signal:ctl.signal,body:JSON.stringify({"
         "model:modelId,messages:[{role:'user',content:'How are you? Reply with exactly GLM_PREFLIGHT_OK.'}],"
         # GLM can spend a small completion budget on hidden reasoning before
@@ -559,7 +563,7 @@ async def _run_openclaw_llm_preflight(
             sandbox_name,
             ["node", "-e", script, str(config_path), provider, model_id],
             workdir="/sandbox",
-            timeout_s=40,
+            timeout_s=request_timeout_s + 10,
         )
         output = ((result.stdout or "") + " " + (result.stderr or "")).strip()
         if not result.return_code:
