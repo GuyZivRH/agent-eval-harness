@@ -1,9 +1,10 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_eval.openshell.forge import prepare_forge_sandbox
+from agent_eval.openshell.forge import prepare_forge_sandbox, resolve_forge_user_file
 from agent_eval.openshell.sandbox import ExecResult
 
 
@@ -69,3 +70,20 @@ def test_installation_identity_staging_fails_closed(tmp_path, code, stdout):
     ]
     with pytest.raises(RuntimeError, match='USER.md staging failed'):
         asyncio.run(prepare_forge_sandbox(sandbox, 'probe', ca, user_file=user))
+
+
+def test_case_owned_mock_identity_overrides_installed_file(tmp_path):
+    config = tmp_path / 'eval.yaml'
+    config.write_text('name: test\n')
+    mock = tmp_path / 'mock-user.md'
+    mock.write_text('# User\n- Display name: Victoria\n')
+    assert resolve_forge_user_file(config, 'mock-user.md', '/tmp/installed/USER.md') == mock
+    assert resolve_forge_user_file(config, None, '/tmp/installed/USER.md') == Path('/tmp/installed/USER.md')
+
+
+@pytest.mark.parametrize('path', ['/tmp/other', '../other', 'missing.md'])
+def test_case_owned_mock_identity_rejects_unscoped_paths(tmp_path, path):
+    config = tmp_path / 'eval.yaml'
+    config.write_text('name: test\n')
+    with pytest.raises(ValueError, match='forge_user_file'):
+        resolve_forge_user_file(config, path, '/tmp/installed/USER.md')

@@ -1386,15 +1386,19 @@ async def _run_case(
             if case_timeout_s != (config.execution.timeout or 600):
                 logger.info("Forge morning-briefing timeout extended to %ss", case_timeout_s)
             if forge_image:
-                from agent_eval.openshell.forge import prepare_forge_sandbox
+                from agent_eval.openshell.forge import prepare_forge_sandbox, resolve_forge_user_file
 
                 ca_file = os.environ.get("AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE", "")
                 if not ca_file:
                     raise ValueError("Forge image workspace requires AGENT_EVAL_FORGE_AI_GATEWAY_CA_FILE")
-                user_file = os.environ.get("AGENT_EVAL_FORGE_USER_FILE", "").strip()
+                user_file = resolve_forge_user_file(
+                    config.config_path,
+                    config.runner.settings.get("forge_user_file"),
+                    os.environ.get("AGENT_EVAL_FORGE_USER_FILE", "").strip(),
+                )
                 await prepare_forge_sandbox(
                     sandbox, name, Path(ca_file),
-                    user_file=Path(user_file) if user_file else None,
+                    user_file=user_file,
                 )
 
             # Upload files individually. OpenShell nests directory uploads at

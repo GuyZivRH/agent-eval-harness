@@ -8,6 +8,20 @@ from .sandbox import OpenShellSandbox
 logger = logging.getLogger(__name__)
 
 
+def resolve_forge_user_file(config_path: Path, configured: str | None, installed: str | None) -> Path | None:
+    """Use a case-owned mock persona only when the eval explicitly requests one."""
+    if not configured:
+        return Path(installed) if installed else None
+    relative = Path(configured)
+    if relative.is_absolute() or ".." in relative.parts or relative == Path("."):
+        raise ValueError("runner.settings.forge_user_file must be a relative file below eval.yaml")
+    base = config_path.resolve().parent
+    selected = (base / relative).resolve()
+    if not selected.is_relative_to(base) or not selected.is_file():
+        raise ValueError("runner.settings.forge_user_file must name a file below eval.yaml")
+    return selected
+
+
 async def prepare_forge_sandbox(
     sandbox: OpenShellSandbox, name: str, ca_file: Path, *, user_file: Path | None = None
 ) -> None:
