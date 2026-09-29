@@ -687,11 +687,29 @@ class TestInstallM365FileAuth:
         assert env["M365_AUTH_HEADER_FILE"] == _M365_HEADER_PATH
         assert env["M365_GRAPH_CURL"] == _M365_GRAPH_CURL_PATH
         commands = [call.args[1] for call in sandbox.exec.call_args_list]
-        assert ["tee", _M365_HEADER_PATH] in commands
+        assert ["chmod", "700", "/sandbox/tmp"] in commands
+        assert ["sh", "-c", 'umask 077; cat > "$1" && chmod 600 "$1"', "sh", _M365_HEADER_PATH] in commands
+        assert ["sh", "-c", 'umask 077; cat > "$1" && chmod 700 "$1"', "sh", _M365_GRAPH_CURL_PATH] in commands
         header_call = next(
-            c for c in sandbox.exec.call_args_list if c.args[1][:2] == ["tee", _M365_HEADER_PATH]
+            c for c in sandbox.exec.call_args_list if c.args[1][-1] == _M365_HEADER_PATH
         )
         assert b"Authorization: Bearer eyJ-test-token" in header_call.kwargs["stdin"]
+
+    def test_does_not_write_token_if_directory_cannot_be_restricted(self):
+        import asyncio
+
+        sandbox = MagicMock()
+        sandbox.exec = AsyncMock(side_effect=[
+            SimpleNamespace(return_code=0),
+            SimpleNamespace(return_code=1),
+        ])
+        env = {"M365_ACCESS_TOKEN": "synthetic-token"}
+
+        with pytest.raises(RuntimeError, match="restrict M365 auth directory"):
+            asyncio.run(_install_m365_file_auth(sandbox, "sbx", env))
+
+        assert sandbox.exec.await_count == 2
+        assert "M365_AUTH_HEADER_FILE" not in env
 
 
 class TestEnsureM365Credentials:
