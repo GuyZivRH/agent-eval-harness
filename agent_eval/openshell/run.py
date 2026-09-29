@@ -14,6 +14,8 @@ import json
 import logging
 import os
 import shlex
+import re
+import secrets
 import subprocess
 import sys
 import time
@@ -35,8 +37,172 @@ from agent_eval.events import (
     resolve_openclaw_session_key_from_list,
 )
 from agent_eval.openshell.sandbox import OpenShellSandbox
+from agent_eval.openshell.turn_usage import extract_openclaw_turn_usage
 
 logger = logging.getLogger(__name__)
+
+_SETTLED_TURN_FALLBACK = "The tool run finished, but no final summary was produced."
+_RESPONSE_LOG_PREVIEW_CHARS = 600
+_RAW_STREAM_PATH = "/sandbox/.openclaw/tmp/aeh-raw-stream.jsonl"
+
+
+def _diagnostic_text(value: object) -> str:
+    """Remove known credential values before writing routine diagnostics."""
+    result = str(value)
+    for key, secret in os.environ.items():
+        if secret and len(secret) >= 8 and ("TOKEN" in key or "KEY" in key or "SECRET" in key):
+            result = result.replace(secret, "[REDACTED]")
+    result = re.sub(r"(?i)Bearer\s+[^\s\"']+", "Bearer [REDACTED]", result)
+    return result
+
+
+def _last_assistant_text(events: list) -> str:
+    """Return observed assistant text, never a tool result or user prompt."""
+    for event in reversed(events):
+        if event.get("type") == "assistant" and isinstance(event.get("text"), str):
+            if event["text"].strip():
+                return event["text"]
+    return ""
+
+
+def _log_openclaw_response(case_output: Path, case_id: str, response: str, events: list) -> None:
+    """Retain the delivered reply and last observed assistant text separately."""
+    observed = _last_assistant_text(events)
+    previous = next(
+        (
+            event["text"] for event in reversed(events)
+            if event.get("type") == "assistant"
+            and isinstance(event.get("text"), str)
+            and event["text"].strip()
+            and _SETTLED_TURN_FALLBACK not in event["text"]
+        ),
+        "",
+    )
+    (case_output / "delivered-response.txt").write_text(response)
+    (case_output / "last-observed-assistant.txt").write_text(observed)
+    (case_output / "last-model-authored-assistant.txt").write_text(previous)
+    if _SETTLED_TURN_FALLBACK in response:
+        logger.error(
+            "OpenClaw delivered fallback case=%s; last model-authored assistant message=%r; "
+            "full text in %s",
+            case_id,
+            _diagnostic_text(previous)[:_RESPONSE_LOG_PREVIEW_CHARS],
+            case_output / "last-model-authored-assistant.txt",
+        )
+        if not previous:
+            logger.warning("No earlier assistant message was recovered for case=%s", case_id)
+    elif response.strip():
+        logger.info(
+            "OpenClaw final response case=%s chars=%d preview=%r; full text in %s",
+            case_id,
+            len(response),
+            _diagnostic_text(response)[:_RESPONSE_LOG_PREVIEW_CHARS],
+            case_output / "delivered-response.txt",
+        )
+    else:
+        logger.error("OpenClaw produced no final response for case=%s; diagnostics: %s", case_id, case_output)
+    logger.debug("OpenClaw delivered response case=%s text=%r", case_id, _diagnostic_text(response))
+    logger.debug("OpenClaw last observed assistant case=%s text=%r", case_id, _diagnostic_text(observed))
+    logger.debug("OpenClaw last model-authored assistant case=%s text=%r", case_id, _diagnostic_text(previous))
+
+
+def _log_openclaw_token_usage(case_output: Path, case_id: str, case_result: dict) -> None:
+    """Log numeric usage once after the final trajectory harvest."""
+
+    def count(value: object) -> int | None:
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+    usage_path = case_output / "openclaw-turn-usage.json"
+    if usage_path.is_file():
+        try:
+            artifact = json.loads(usage_path.read_text())
+            if not isinstance(artifact, dict):
+                raise ValueError("turn usage artifact is not an object")
+            turns = artifact.get("turns", [])
+            if not isinstance(turns, list):
+                raise ValueError("turns is not a list")
+            for turn in turns:
+                if not isinstance(turn, dict):
+                    continue
+                record = {key: count(turn.get(key)) for key in (
+                    "turn", "input_tokens", "cache_read_tokens",
+                    "cache_write_tokens", "output_tokens", "reasoning_tokens",
+                )}
+                record["case"] = case_id
+                record["scope"] = "turn"
+                reason = turn.get("stop_reason")
+                record["stop_reason"] = (
+                    reason if isinstance(reason, str) and reason in
+                    {"stop", "toolUse", "length", "error", "aborted"} else
+                    None if reason is None else "other"
+                )
+                source = turn.get("source")
+                record["source"] = (
+                    source if isinstance(source, str) and source in
+                    {"assistant.message", "session.message", "model.completed.lastCallUsage",
+                     "model.completed.usage-unavailable"} else "other"
+                )
+                logger.info("OpenClaw token usage %s", json.dumps(record, sort_keys=True))
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("Could not read OpenClaw turn usage for case=%s: %s", case_id, type(exc).__name__)
+    else:
+        logger.warning("OpenClaw turn usage unavailable for case=%s", case_id)
+
+    aggregate = case_result.get("token_usage") or {}
+    if not isinstance(aggregate, dict):
+        aggregate = {}
+    logger.info("OpenClaw token usage %s", json.dumps({
+        "case": case_id,
+        "scope": "case",
+        "source": "harness.case_result",
+        "input_tokens": count(aggregate.get("input")),
+        "output_tokens": count(aggregate.get("output")),
+    }, sort_keys=True))
+
+
+def _log_raw_model_response(case_output: Path, case_id: str) -> None:
+    """Report the last pre-filter assistant text from an opt-in OpenClaw raw stream."""
+    stream = case_output / "openclaw-raw-stream.jsonl"
+    last = None
+    for line in stream.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event") == "assistant_message_end":
+            last = event
+    if last is None:
+        logger.warning("OpenClaw raw stream has no completed assistant message for case=%s", case_id)
+        return
+    text = last.get("rawText") if isinstance(last.get("rawText"), str) else ""
+    (case_output / "last-raw-model-text.txt").write_text(text)
+    logger.info(
+        "OpenClaw last raw model text case=%s chars=%d thinking_chars=%d preview=%r; full text in %s",
+        case_id,
+        len(text),
+        len(last.get("rawThinking") or ""),
+        _diagnostic_text(text)[:_RESPONSE_LOG_PREVIEW_CHARS],
+        case_output / "last-raw-model-text.txt",
+    )
+    logger.debug("OpenClaw last raw model text case=%s text=%r", case_id, _diagnostic_text(text))
+
+
+def _write_failure(case_output: Path, phase: str, error: object, exit_code: int | None = None) -> None:
+    failure = {
+        "phase": phase,
+        "exit_code": exit_code,
+        "error": _diagnostic_text(error),
+        "artifacts": [name for name in (
+            "stdout.log", "stderr.log", "run_result.json", "events.json",
+            "openclaw-trajectory-events.jsonl", "agent-response.txt",
+            "delivered-response.txt", "last-observed-assistant.txt",
+            "last-model-authored-assistant.txt", "openclaw-raw-stream.jsonl",
+            "last-raw-model-text.txt",
+        ) if (case_output / name).is_file()],
+    }
+    (case_output / "failure.json").write_text(json.dumps(failure, indent=2))
+    logger.error("Case %s failed in %s (rc=%s): %s; diagnostics: %s",
+                 case_output.name, phase, exit_code, failure["error"], case_output)
 
 SCRIPTS_DIR = Path(__file__).parents[2] / "skills" / "eval-run" / "scripts"
 
@@ -233,7 +399,9 @@ def _openclaw_model_catalog_entry(model_id: str, name: str = "", api: str = "") 
     return entry
 
 
-def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
+def build_openclaw_eval_config(
+    providers: dict, model: str, *, forge_image: bool = False
+) -> tuple:
     """Build /sandbox/openclaw-eval.json and the --model OpenClaw should receive.
 
     Pipeline --model is often a LiteLLM alias (claude-sonnet). OpenClaw needs
@@ -259,6 +427,44 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
             "providers": {},
         },
     }
+    if forge_image:
+        # OpenShell's evaluation keepalive bypasses the image entrypoint, so the
+        # image's generated OpenClaw policy is not present for `agent exec`.
+        # Its headless parent is `main` (Forge's gateway parent is `default`).
+        # Keep the same narrow child boundary used by the published image.
+        openclaw_config["agents"]["ownership"] = "explicit"
+        for owner in ("heartbeat", "systemAgent", "authInheritance"):
+            openclaw_config["agents"]["defaults"][owner] = {"agentId": "main"}
+        openclaw_config["talk"] = {"agentId": "main"}
+        openclaw_config["agents"]["entries"] = {
+            "main": {
+                "workspace": "/sandbox",
+                "subagents": {"allowAgents": ["brief-reader"]},
+                "tools": {"allow": [
+                    "read", "write", "edit", "apply_patch", "exec", "process",
+                    "memory_search", "memory_get", "session_status",
+                    "sessions_list", "sessions_history", "sessions_spawn",
+                    "sessions_yield", "automations", "tavily_search",
+                    "tavily_extract",
+                ]},
+            },
+            "brief-reader": {
+                "workspace": "/sandbox",
+                "tools": {"allow": ["read", "write"]},
+            },
+        }
+        openclaw_config["tools"] = {
+            "deny": ["browser", "canvas", "web_fetch", "web_search"],
+            "codeMode": False,
+            "fs": {"workspaceOnly": True},
+        }
+        # The restricted child needs the published reply runtime owned by a
+        # Gateway. Embedded `agent exec` accepts the spawn but cannot run it.
+        openclaw_config["gateway"] = {
+            "mode": "local",
+            "bind": "loopback",
+            "auth": {"mode": "token"},
+        }
     for name, provider_cfg in providers.items():
         provider_cfg = provider_cfg or {}
         raw_base = provider_cfg.get("baseUrl", "")
@@ -319,11 +525,66 @@ def build_openclaw_eval_config(providers: dict, model: str) -> tuple:
     return openclaw_config, qualified
 
 
+async def _start_forge_openclaw_gateway(
+    sandbox: OpenShellSandbox, name: str, env: dict[str, str]
+) -> None:
+    """Start one loopback Gateway in this case's isolated OpenShell sandbox."""
+    launched = await sandbox.exec(
+        name,
+        ["/bin/sh", "-c", "openclaw gateway run --bind loopback --port 18789 "
+         ">/sandbox/.openclaw/gateway.log 2>&1 </dev/null & "
+         "echo $! >/sandbox/.openclaw/gateway.pid"],
+        env=env,
+    )
+    if launched.return_code:
+        raise RuntimeError(f"OpenClaw Gateway launch failed: {launched.stderr[:500]}")
+    for _ in range(30):
+        ready = await sandbox.exec(
+            name,
+            ["node", "-e", "fetch('http://127.0.0.1:18789/healthz')"
+             ".then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"],
+            env=env,
+            timeout_s=10,
+        )
+        if ready.return_code == 0:
+            return
+        await asyncio.sleep(1)
+    details = await sandbox.exec(
+        name, ["tail", "-n", "30", "/sandbox/.openclaw/gateway.log"]
+    )
+    raise RuntimeError(
+        "OpenClaw Gateway did not become healthy: "
+        + _diagnostic_text(details.stdout or details.stderr)[-1500:]
+    )
+
+
+async def _wait_for_full_forge_brief(
+    sandbox: OpenShellSandbox, name: str, timeout_s: int
+) -> bool:
+    """Keep the Gateway alive while spawned readers and parent resume."""
+    deadline = time.monotonic() + timeout_s
+    probe = (
+        "const fs=require('fs');try{"
+        "const b=JSON.parse(fs.readFileSync('/sandbox/brief.json','utf8'));"
+        "process.exit(b.scope==='full'?0:1)"
+        "}catch{process.exit(1)}"
+    )
+    while time.monotonic() < deadline:
+        status = await sandbox.exec(name, ["node", "-e", probe], timeout_s=10)
+        if status.return_code == 0:
+            logger.info("Gateway child continuation published scope=full in %s", name)
+            return True
+        await asyncio.sleep(5)
+    logger.warning("Gateway child continuation did not publish scope=full in %s", name)
+    return False
+
+
 async def _run_openclaw_llm_preflight(
     sandbox: OpenShellSandbox,
     sandbox_name: str,
     config_path: Path,
     qualified_model: str,
+    max_tokens: int = 512,
 ) -> None:
     """Make a minimal provider call, retrying one transient failure.
 
@@ -332,10 +593,12 @@ async def _run_openclaw_llm_preflight(
     separates model/network failures from agent tools, workspace, and memory
     failures and avoids spending the full case timeout on an unreachable LLM.
     """
+    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens < 1:
+        raise ValueError("runner.settings.llm_preflight_max_tokens must be a positive integer")
     provider, model_id = qualified_model.split("/", 1)
     script = (
         "const fs=require('fs');"
-        "const [configPath,providerName,modelId]=process.argv.slice(1);"
+        "const [configPath,providerName,modelId,maxTokens]=process.argv.slice(1);"
         "const c=JSON.parse(fs.readFileSync(configPath,'utf8'));"
         "const p=c.models.providers[providerName];"
         "if(!p||!p.baseUrl)throw new Error('provider config missing: '+providerName);"
@@ -352,7 +615,7 @@ async def _run_openclaw_llm_preflight(
         # GLM can spend a small completion budget on hidden reasoning before
         # producing visible text; 20 tokens can therefore yield an empty
         # content field even when the model is healthy.
-        "max_tokens:128,temperature:0})})"
+        "max_tokens:Number(maxTokens),temperature:0})})"
         ".then(async r=>{const text=await r.text();"
         "if(!r.ok)throw new Error('HTTP '+r.status+' '+text.slice(0,300));"
         "let body;try{body=JSON.parse(text)}catch{throw new Error('non-JSON response: '+text.slice(0,300))}"
@@ -364,14 +627,15 @@ async def _run_openclaw_llm_preflight(
         "}).finally(()=>clearTimeout(timer)).catch(e=>{console.error('LLM_PREFLIGHT_FAILED '+e.message);process.exitCode=1});"
     )
     logger.info(
-        "Running in-sandbox LLM preflight provider=%s model=%s endpoint=<from config>",
+        "Running in-sandbox LLM preflight provider=%s model=%s max_tokens=%d endpoint=<from config>",
         provider,
         model_id,
+        max_tokens,
     )
     for attempt in range(2):
         result = await sandbox.exec(
             sandbox_name,
-            ["node", "-e", script, str(config_path), provider, model_id],
+            ["node", "-e", script, str(config_path), provider, model_id, str(max_tokens)],
             workdir="/sandbox",
             timeout_s=40,
         )
@@ -441,12 +705,20 @@ async def _harvest_openclaw_events(
             except (json.JSONDecodeError, ValueError):
                 openclaw_json = {}
 
+    if isinstance(openclaw_json, dict) and isinstance(openclaw_json.get("result"), dict):
+        openclaw_json = openclaw_json["result"]
+    if not isinstance(openclaw_json, dict):
+        openclaw_json = {}
+
     # 1) Legacy session JSONL path
     session_file = resolve_openclaw_session_file(openclaw_json) if openclaw_json else None
     if session_file:
         try:
             cat_result = await sandbox.exec(name, ["cat", session_file])
             if cat_result.return_code == 0 and cat_result.stdout:
+                (case_output / "openclaw-turn-usage.json").write_text(
+                    json.dumps(extract_openclaw_turn_usage(cat_result.stdout, trajectory=False), indent=2) + "\n"
+                )
                 events = parse_openclaw_session(cat_result.stdout)
                 if events:
                     return events
@@ -454,10 +726,16 @@ async def _harvest_openclaw_events(
             logger.warning(f"Failed to read OpenClaw sessionFile for {case_id}: {e}")
 
     # 2) SQLite-era trajectory export (requires retained --state-dir)
-    session_id = (openclaw_json or {}).get("sessionId") or ""
-    if session_id:
-        session_key = build_explicit_openclaw_session_key(session_id)
-        export_name = f"aeh-{case_id}"
+    session_id = openclaw_json.get("sessionId") or ""
+    gateway_session = sandbox_env.get("OPENCLAW_GATEWAY_URL")
+    if session_id or gateway_session:
+        session_key = (
+            f"agent:main:aeh-{case_id}" if gateway_session
+            else build_explicit_openclaw_session_key(session_id)
+        )
+        # A Gateway continuation may add turns after the first export. Use a
+        # fresh destination when polling rather than re-reading a stale file.
+        export_name = f"aeh-{case_id}-{uuid.uuid4().hex[:6]}"
         try:
             export_result = await sandbox.exec(
                 name,
@@ -532,6 +810,9 @@ async def _harvest_openclaw_events(
                     # Keep raw export for debugging / offline reparse
                     (case_output / "openclaw-trajectory-events.jsonl").write_text(
                         cat_events.stdout
+                    )
+                    (case_output / "openclaw-turn-usage.json").write_text(
+                        json.dumps(extract_openclaw_turn_usage(cat_events.stdout, trajectory=True), indent=2) + "\n"
                     )
                     events = parse_openclaw_trajectory_events(cat_events.stdout)
                     if events:
@@ -911,6 +1192,12 @@ async def run_openshell(
         Exit code (non-zero on regression).
     """
     config = EvalConfig.from_yaml(config_path)
+    configured_log_level = config.runner.settings.get("log_level")
+    if configured_log_level is not None:
+        configured_log_level = str(configured_log_level).upper()
+        if configured_log_level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
+            raise ValueError("runner.settings.log_level must be DEBUG, INFO, WARNING, or ERROR")
+        logger.setLevel(getattr(logging, configured_log_level))
     sandbox_mgr = OpenShellSandbox.from_env()
 
     # Resolve to absolute path once - subprocesses run with different cwd
@@ -1173,6 +1460,7 @@ async def _run_case(
     case_id = staged_case.name
     case_output = output_dir / "cases" / case_id
     case_output.mkdir(parents=True, exist_ok=True)
+    phase = "sandbox-create"
 
     async with sem:
         # OpenShell sandbox names max 19 chars: prefix(2) + hex(8) + dash + digits
@@ -1181,6 +1469,7 @@ async def _run_case(
         try:
             logger.info(f"Creating sandbox {name} for case {case_id}")
             await sandbox.create(name, image)
+            phase = "bootstrap"
             forge_image = os.environ.get("AGENT_EVAL_OPENSHELL_WORKSPACE") == "forge-image"
             if forge_image:
                 from agent_eval.openshell.forge import prepare_forge_sandbox
@@ -1239,6 +1528,7 @@ async def _run_case(
                 prompt = f"{str(system_prompt).strip()}\n\n{prompt}"
 
             # Skip per-case seeding when a scene was seeded at run start
+            phase = "case-setup"
             sandbox_env_extra: dict[str, str] = {}
             if not scene_active:
                 # Optional host-side seeds (Crabline Slack / smolclaw Gmail|Calendar)
@@ -1301,6 +1591,10 @@ async def _run_case(
             # Build env to forward to sandbox (API keys + config env + M365_*)
             sandbox_env = _sandbox_env(config)
             sandbox_env.update({k: v for k, v in sandbox_env_extra.items() if v})
+            capture_raw_stream = (
+                os.environ.get("AGENT_EVAL_CAPTURE_RAW_MODEL_STREAM") == "1"
+                or config.runner.settings.get("capture_raw_model_stream") is True
+            )
             if forge_image:
                 # This profile uses supervisor-injected provider placeholders,
                 # not raw orchestrator credentials or AEH-created tool wrappers.
@@ -1350,6 +1644,10 @@ async def _run_case(
                 stdin_data = prompt.encode()
             else:
                 # OpenClaw runner (default)
+                if capture_raw_stream:
+                    sandbox_env["OPENCLAW_RAW_STREAM"] = "1"
+                    sandbox_env["OPENCLAW_RAW_STREAM_PATH"] = _RAW_STREAM_PATH
+                    logger.warning("OpenClaw raw model stream enabled for case=%s; private case artifact will contain model data", case_id)
                 # Custom providers (e.g. inference.local) must be registered in
                 # openclaw.json and passed via --config. --auth-env-only skips
                 # config entirely (OpenClaw docs), so it cannot be used together
@@ -1373,7 +1671,7 @@ async def _run_case(
                 sandbox_env["TMPDIR"] = str(_OPENCLAW_TMP_DIR)
                 if providers:
                     openclaw_config, openclaw_model = build_openclaw_eval_config(
-                        providers, model
+                        providers, model, forge_image=forge_image
                     )
                     # Custom providers are openai-compatible (LiteLLM / inference.local).
                     # Anthropic env makes OpenClaw discover api.anthropic.com.
@@ -1415,8 +1713,10 @@ async def _run_case(
                             "fs.writeFileSync(p,JSON.stringify(c));",
                         ],
                     )
+                    phase = "preflight"
                     await _run_openclaw_llm_preflight(
-                        sandbox, name, config_path, openclaw_model
+                        sandbox, name, config_path, openclaw_model,
+                        max_tokens=config.runner.settings.get("llm_preflight_max_tokens", 512),
                     )
                     sandbox_env["OPENCLAW_CONFIG_PATH"] = str(config_path)
                     auth_env_only = False
@@ -1425,29 +1725,44 @@ async def _run_case(
                 if not effort and config.runner.settings:
                     effort = config.runner.settings.get("effort")
 
-                # Pass --state-dir so agent exec keeps SQLite (default temp state
-                # is deleted on exit). Same path as OPENCLAW_STATE_DIR under
-                # /sandbox (Landlock read_write). Needed for trajectory export.
-                cmd = build_openclaw_argv(
-                    model=openclaw_model,
-                    timeout_s=config.execution.timeout,
-                    effort=effort,
-                    cwd=Path("/sandbox"),
-                    auth_env_only=auth_env_only,
-                    config_path=config_path,
-                    state_dir=_OPENCLAW_STATE_DIR,
-                )
-                # Prompt is positional argument in 'agent exec' format
-                cmd.append(prompt)
+                if forge_image:
+                    # `agent exec` has no published child reply runtime. The
+                    # Gateway owns child sessions; keep it loopback-only and
+                    # use an ephemeral token scoped to this sandbox.
+                    sandbox_env["OPENCLAW_GATEWAY_TOKEN"] = secrets.token_urlsafe(32)
+                    sandbox_env["OPENCLAW_GATEWAY_URL"] = "ws://127.0.0.1:18789"
+                    await _start_forge_openclaw_gateway(sandbox, name, sandbox_env)
+                    cmd = ["openclaw", "agent", "--agent", "main",
+                           "--session-key", f"aeh-{case_id}", "--message", prompt,
+                           "--model", openclaw_model, "--timeout",
+                           str(config.execution.timeout or 600), "--json"]
+                    if effort:
+                        cmd.extend(["--thinking", effort])
+                else:
+                    # Retain the isolated embedded mode for non-Forge images.
+                    cmd = build_openclaw_argv(
+                        model=openclaw_model,
+                        timeout_s=config.execution.timeout,
+                        effort=effort,
+                        cwd=Path("/sandbox"),
+                        auth_env_only=auth_env_only,
+                        config_path=config_path,
+                        state_dir=_OPENCLAW_STATE_DIR,
+                    )
+                    cmd.append(prompt)
                 stdin_data = None
 
             logger.info(
                 "Executing case %s in sandbox %s argv=%s",
                 case_id,
                 name,
-                cmd[:-1] if len(cmd) > 1 else cmd,
+                ["openclaw", "agent", "--agent", "main", "<prompt omitted>"]
+                if runner_type == "openclaw" and forge_image
+                else (cmd[:-1] if len(cmd) > 1 else cmd),
             )
             timeout = (config.execution.timeout or 600) + 60
+            phase = "agent-exec"
+            full_brief_seen = False
             result = await sandbox.exec(
                 name,
                 cmd,
@@ -1456,18 +1771,50 @@ async def _run_case(
                 env=sandbox_env,
                 timeout_s=timeout,
             )
+            if runner_type == "openclaw" and forge_image:
+                try:
+                    envelope = json.loads(result.stdout)
+                    if isinstance(envelope, dict):
+                        gateway_result = envelope.get("result") or {}
+                        spawns = gateway_result.get("acceptedSessionSpawns") or []
+                        logger.info(
+                            "Gateway response shape case=%s keys=%s result_keys=%s accepted_spawns=%s continuation_settled=%s",
+                            case_id,
+                            sorted(envelope),
+                            sorted(gateway_result) if isinstance(gateway_result, dict) else [],
+                            len(spawns),
+                            gateway_result.get("requesterContinuationSettled")
+                            if isinstance(gateway_result, dict) else None,
+                        )
+                        if spawns:
+                            full_brief_seen = await _wait_for_full_forge_brief(
+                                sandbox, name, config.execution.timeout or 600
+                            )
+                except (TypeError, ValueError):
+                    logger.warning("Gateway response was not one JSON object for %s", case_id)
+                # Snapshot live diagnostic files before downloading; a child
+                # may still be appending even after the parent turn returns.
+                await sandbox.exec(
+                    name,
+                    ["/bin/sh", "-c", "cp -a /sandbox/.openclaw/tmp "
+                     "/sandbox/.openclaw/tmp-snapshot 2>/dev/null || true; "
+                     "cp /sandbox/.openclaw/tmp/aeh-raw-stream.jsonl "
+                     "/sandbox/.openclaw/aeh-raw-stream-snapshot.jsonl "
+                     "2>/dev/null || true"],
+                    timeout_s=20,
+                )
             _log_model_diagnostics(case_id, openclaw_model, sandbox_env, name)
             duration_s = time.monotonic() - start_time
             if result.return_code:
                 logger.warning(
-                    "Case %s sandbox exec rc=%s duration=%.2fs stderr=%r stdout=%r",
+                    "Case %s sandbox exec rc=%s duration=%.2fs stderr=%r; full output in case artifacts",
                     case_id,
                     result.return_code,
                     duration_s,
-                    (result.stderr or "")[:800],
-                    (result.stdout or "")[:400],
+                    _diagnostic_text(result.stderr or "")[:300],
                 )
 
+            phase = "artifact-collection"
             for output in config.outputs or []:
                 if output.path:
                     # OpenClaw's response is collected from stdout below. Its
@@ -1477,8 +1824,13 @@ async def _run_case(
                         if not await _openclaw_output_present(sandbox, name):
                             continue
                     try:
+                        remote_output = (
+                            "/sandbox/.openclaw/tmp-snapshot"
+                            if forge_image and output.path == ".openclaw/tmp"
+                            else f"/sandbox/{output.path}"
+                        )
                         await sandbox.download(
-                            name, f"/sandbox/{output.path}", staged_case / output.path
+                            name, remote_output, staged_case / output.path
                         )
                     except Exception as e:
                         # OpenClaw prompt cases often never create /sandbox/output;
@@ -1508,7 +1860,9 @@ async def _run_case(
                 output_dir.mkdir(exist_ok=True)
                 (output_dir / "response.txt").write_text(response_text)
 
+                events = []
                 try:
+                    phase = "trajectory"
                     events = await _harvest_openclaw_events(
                         sandbox,
                         name,
@@ -1518,6 +1872,26 @@ async def _run_case(
                         case_output=case_output,
                         sandbox_env=sandbox_env,
                     )
+                    if full_brief_seen:
+                        report_deadline = time.monotonic() + 120
+                        while (
+                            time.monotonic() < report_deadline
+                            and not (
+                                events and events[-1].get("type") == "assistant"
+                                and events[-1].get("text")
+                                and not events[-1].get("tools")
+                            )
+                        ):
+                            await asyncio.sleep(5)
+                            events = await _harvest_openclaw_events(
+                                sandbox,
+                                name,
+                                stdout_text=result.stdout,
+                                prompt=prompt,
+                                case_id=case_id,
+                                case_output=case_output,
+                                sandbox_env=sandbox_env,
+                            )
                     with open(case_output / "events.json", "w") as f:
                         json.dump(events, f, indent=2)
                     logger.debug(
@@ -1525,8 +1899,46 @@ async def _run_case(
                         case_id,
                         len(events),
                     )
+                    terminal_report = bool(
+                        events and events[-1].get("type") == "assistant"
+                        and events[-1].get("text")
+                        and not events[-1].get("tools")
+                    )
+                    if full_brief_seen and not terminal_report:
+                        logger.warning(
+                            "Full brief exists, but no final parent report was observed for %s",
+                            case_id,
+                        )
+                    if full_brief_seen and terminal_report and not response_text:
+                        response_text = _last_assistant_text(events)
+                        if response_text:
+                            case_result["response_text"] = response_text
+                            (output_dir / "response.txt").write_text(response_text)
                 except Exception as e:
                     logger.warning(f"Failed to generate events.json for {case_id}: {e}")
+                finally:
+                    # Diagnostic only: a partial answer is not the final answer
+                    # judges read from output/response.txt.
+                    # Error envelopes can contain an isError payload; the
+                    # fallback event parser may label it as assistant text.
+                    # On failure trust only a real session/trajectory export.
+                    has_transcript = (case_output / "openclaw-trajectory-events.jsonl").is_file()
+                    partial = _last_assistant_text(events) if (not result.return_code or has_transcript) else ""
+                    if not partial and case_result.get("response_text"):
+                        partial = case_result["response_text"]
+                    (case_output / "agent-response.txt").write_text(partial)
+                    _log_openclaw_response(case_output, case_id, response_text, events)
+                    _log_openclaw_token_usage(case_output, case_id, case_result)
+                    if capture_raw_stream:
+                        try:
+                            stream_path = (
+                                "/sandbox/.openclaw/aeh-raw-stream-snapshot.jsonl"
+                                if forge_image else _RAW_STREAM_PATH
+                            )
+                            await sandbox.download(name, stream_path, case_output / "openclaw-raw-stream.jsonl")
+                            _log_raw_model_response(case_output, case_id)
+                        except Exception as error:
+                            logger.warning("OpenClaw raw stream unavailable for case=%s: %s", case_id, _diagnostic_text(error))
             else:
                 # Generic result for cli/claude-code runners
                 case_result = {
@@ -1550,10 +1962,16 @@ async def _run_case(
                 json.dump(case_result, f, indent=2)
             (case_output / "stdout.log").write_text(result.stdout)
             (case_output / "stderr.log").write_text(result.stderr)
+            if result.return_code:
+                detail = case_result.get("stderr") or result.stderr or "Agent exited without a final response"
+                _write_failure(case_output, "agent-exec", detail, result.return_code)
 
             logger.info(f"Case {case_id} completed with exit code {result.return_code}")
             return case_result
 
+        except Exception as e:
+            _write_failure(case_output, phase, e)
+            raise
         finally:
             if not keep:
                 await sandbox.delete(name)
@@ -1581,8 +1999,11 @@ def main():
     )
     args = parser.parse_args()
 
+    log_level = os.environ.get("AGENT_EVAL_LOG_LEVEL", "INFO").upper()
+    if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
+        raise ValueError("AGENT_EVAL_LOG_LEVEL must be DEBUG, INFO, WARNING, or ERROR")
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, log_level),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
