@@ -986,18 +986,20 @@ async def _install_m365_file_auth(
         )
         return
 
+    private_dir = await sandbox.exec(
+        name, ["chmod", "700", str(_OPENCLAW_TMP_DIR)],
+    )
+    if private_dir.return_code:
+        raise RuntimeError("Could not restrict M365 auth directory in sandbox")
+
     header = f"Authorization: Bearer {token}\n"
     written = await sandbox.exec(
         name,
-        ["tee", _M365_HEADER_PATH],
+        ["sh", "-c", 'umask 077; cat > "$1" && chmod 600 "$1"', "sh", _M365_HEADER_PATH],
         stdin=header.encode(),
     )
     if written.return_code:
-        logger.warning(
-            "Could not write M365 auth header in sandbox (rc=%s)",
-            written.return_code,
-        )
-        return
+        raise RuntimeError("Could not write private M365 auth header in sandbox")
 
     sandbox_env["M365_AUTH_HEADER_FILE"] = _M365_HEADER_PATH
 
@@ -1007,11 +1009,10 @@ async def _install_m365_file_auth(
     )
     curl_written = await sandbox.exec(
         name,
-        ["tee", _M365_GRAPH_CURL_PATH],
+        ["sh", "-c", 'umask 077; cat > "$1" && chmod 700 "$1"', "sh", _M365_GRAPH_CURL_PATH],
         stdin=wrapper.encode(),
     )
     if curl_written.return_code == 0:
-        await sandbox.exec(name, ["chmod", "+x", _M365_GRAPH_CURL_PATH])
         sandbox_env["M365_GRAPH_CURL"] = _M365_GRAPH_CURL_PATH
 
     present = [k for k in _M365_FORWARD_ENV if sandbox_env.get(k)]
