@@ -17,8 +17,10 @@ from agent_eval.openshell.run import (
     _child_env,
     _ensure_m365_credentials,
     _install_m365_file_auth,
+    _log_openclaw_response,
     _m365_usable,
     _openai_compat_base_url,
+    _log_raw_model_response,
     _resolve_prompt,
     _sandbox_env,
     _stage_forge_ai_gateway_ca,
@@ -26,6 +28,46 @@ from agent_eval.openshell.run import (
     build_openclaw_eval_config,
     qualify_openclaw_model,
 )
+
+
+def test_openclaw_response_logging_keeps_fallback_separate_from_model_text(tmp_path, caplog):
+    fallback = "The tool run finished, but no final summary was produced. I did not repeat any completed actions."
+    events = [
+        {"type": "assistant", "text": "I am running the collector now."},
+        {"type": "assistant", "text": fallback},
+    ]
+    with caplog.at_level("DEBUG"):
+        _log_openclaw_response(tmp_path, "morning-briefing", fallback, events)
+    assert (tmp_path / "delivered-response.txt").read_text() == fallback
+    assert (tmp_path / "last-observed-assistant.txt").read_text() == fallback
+    assert (tmp_path / "last-model-authored-assistant.txt").read_text() == "I am running the collector now."
+    assert any(record.levelname == "ERROR" and "delivered fallback" in record.message for record in caplog.records)
+    assert any(record.levelname == "DEBUG" and "last model-authored assistant" in record.message for record in caplog.records)
+
+
+def test_openclaw_response_logging_reports_final_answer_at_info(tmp_path, caplog):
+    with caplog.at_level("INFO"):
+        _log_openclaw_response(
+            tmp_path,
+            "analysis-panel",
+            "Final answer",
+            [{"type": "assistant", "text": "Final answer"}],
+        )
+    assert (tmp_path / "delivered-response.txt").read_text() == "Final answer"
+    assert any(record.levelname == "INFO" and "Final answer" in record.message for record in caplog.records)
+
+
+def test_raw_model_logging_keeps_last_visible_text_without_logging_thinking(tmp_path, caplog):
+    stream = tmp_path / "openclaw-raw-stream.jsonl"
+    stream.write_text("\n".join([
+        json.dumps({"event": "assistant_message_end", "rawText": "before", "rawThinking": "private"}),
+        json.dumps({"event": "assistant_message_end", "rawText": "partial final", "rawThinking": "reasoning"}),
+    ]))
+    with caplog.at_level("DEBUG"):
+        _log_raw_model_response(tmp_path, "morning-briefing")
+    assert (tmp_path / "last-raw-model-text.txt").read_text() == "partial final"
+    assert "partial final" in caplog.text
+    assert "reasoning" not in caplog.text
 
 
 @pytest.mark.parametrize("code,expected", [(0, True), (3, False), (2, True), (127, True)])
@@ -38,7 +80,8 @@ def test_optional_openclaw_output_probe(code, expected):
     assert sandbox.exec.call_args.args[0] == "test-sandbox"
 
 
-def test_llm_preflight_resolves_environment_reference_in_memory(tmp_path, monkeypatch):
+@pytest.mark.parametrize("max_tokens", [512, 1024])
+def test_llm_preflight_resolves_environment_reference_in_memory(tmp_path, monkeypatch, max_tokens):
     import asyncio
     import shutil
     import subprocess
@@ -55,10 +98,14 @@ def test_llm_preflight_resolves_environment_reference_in_memory(tmp_path, monkey
     monkeypatch.setenv("PREFLIGHT_TEST_KEY", "synthetic-test-value")
     sandbox = SimpleNamespace(exec=AsyncMock(return_value=SimpleNamespace(
         return_code=0, stdout="", stderr="")))
-    asyncio.run(_run_openclaw_llm_preflight(sandbox, "test", path, "inference/test"))
+    asyncio.run(_run_openclaw_llm_preflight(
+        sandbox, "test", path, "inference/test", max_tokens=max_tokens
+    ))
     argv = sandbox.exec.call_args.args[1]
     stub = (
         "global.fetch=async(url,opts)=>{"
+        "const body=JSON.parse(opts.body);"
+        f"if(body.max_tokens!=={max_tokens})throw new Error('wrong preflight budget');"
         "if(opts.headers.authorization!=='Bearer synthetic-test-value')throw new Error('bad auth');"
         "return {ok:true,status:200,text:async()=>JSON.stringify({choices:[{message:{content:'OK'}}]})};};"
     )
@@ -67,6 +114,19 @@ def test_llm_preflight_resolves_environment_reference_in_memory(tmp_path, monkey
     assert "LLM_PREFLIGHT_OK" in result.stdout
     assert "synthetic-test-value" not in result.stdout
     assert path.read_text() == original
+
+
+@pytest.mark.parametrize("max_tokens", [0, -1, True, 512.5, "1024"])
+def test_llm_preflight_rejects_invalid_token_limit(max_tokens):
+    import asyncio
+    from agent_eval.openshell.run import _run_openclaw_llm_preflight
+
+    sandbox = SimpleNamespace(exec=AsyncMock())
+    with pytest.raises(ValueError, match="llm_preflight_max_tokens must be a positive integer"):
+        asyncio.run(_run_openclaw_llm_preflight(
+            sandbox, "test", Path("config"), "inference/test", max_tokens=max_tokens
+        ))
+    sandbox.exec.assert_not_awaited()
 
 
 @pytest.mark.parametrize("code,error", [
@@ -338,6 +398,83 @@ class TestResolvePrompt:
 
 class TestRunCaseEnvForwarding:
     """Tests verifying _run_case passes env to sandbox.exec()."""
+
+    def test_diagnostic_helpers_keep_only_assistant_text_and_redact_secret(self, monkeypatch, tmp_path):
+        from agent_eval.openshell.run import _last_assistant_text, _write_failure
+
+        monkeypatch.setenv("TEST_API_TOKEN", "secret-value-123")
+        assert _last_assistant_text([
+            {"type": "assistant", "text": "First thought"},
+            {"type": "tool", "text": "tool output"},
+            {"type": "assistant", "text": "Partial recommendation"},
+        ]) == "Partial recommendation"
+        _write_failure(tmp_path, "preflight", "Bearer abc123 secret-value-123", 124)
+        failure = json.loads((tmp_path / "failure.json").read_text())
+        assert failure["exit_code"] == 124
+        assert "secret-value-123" not in failure["error"]
+        assert "abc123" not in failure["error"]
+
+    def test_create_failure_writes_diagnostic(self, tmp_path):
+        from agent_eval.openshell.run import _run_case
+        from agent_eval.openshell.sandbox import OpenShellSandbox
+        import asyncio
+
+        case = tmp_path / "cases" / "early-failure"
+        case.mkdir(parents=True)
+        sandbox = MagicMock(spec=OpenShellSandbox)
+        sandbox.create = AsyncMock(side_effect=RuntimeError("image pull refused"))
+        sandbox.delete = AsyncMock()
+        with pytest.raises(RuntimeError, match="image pull refused"):
+            asyncio.run(_run_case(sandbox, _mock_config(prompt="test"), case,
+                                  "model", "image:v1", tmp_path / "runs",
+                                  asyncio.Semaphore(1), keep=False, scene_active=True))
+        failure = json.loads((tmp_path / "runs/cases/early-failure/failure.json").read_text())
+        assert failure["phase"] == "sandbox-create"
+        assert "image pull refused" in failure["error"]
+
+    def test_agent_failure_preserves_partial_text_only_as_diagnostic(self, tmp_path, monkeypatch):
+        from agent_eval.openshell.run import _run_case
+        from agent_eval.openshell.sandbox import OpenShellSandbox
+        import asyncio
+
+        case = tmp_path / "cases" / "agent-failure"
+        case.mkdir(parents=True)
+        (case / "input.yaml").write_text("prompt: test\n")
+        config = _mock_config(prompt="test")
+        config.runner.type = "openclaw"
+        config.runner.providers = None
+        sandbox = MagicMock(spec=OpenShellSandbox)
+        sandbox.create = AsyncMock()
+        sandbox.upload = AsyncMock()
+        sandbox.download = AsyncMock()
+        sandbox.delete = AsyncMock()
+        error_envelope = json.dumps({"ok": False, "status": "error", "final": "",
+            "error": {"message": "malformed tool call"},
+            "payloads": [{"text": "malformed tool call", "isError": True}]})
+
+        async def fake_exec(_name, command, **_kwargs):
+            if command[:2] == ["sh", "-c"] and command[2].startswith("test -e "):
+                return SimpleNamespace(return_code=1, stdout="", stderr="")
+            if command and command[0] == "openclaw":
+                return SimpleNamespace(return_code=1, stdout=error_envelope, stderr="")
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+        sandbox.exec = AsyncMock(side_effect=fake_exec)
+
+        async def fake_harvest(_sandbox, _name, *, case_output, **_kwargs):
+            (case_output / "openclaw-trajectory-events.jsonl").write_text("observed transcript")
+            return [{"type": "assistant", "text": "I found one blocker, but have not finished."}]
+        monkeypatch.setattr("agent_eval.openshell.run._harvest_openclaw_events", fake_harvest)
+
+        result = asyncio.run(_run_case(sandbox, config, case, "model", "image:v1",
+                                   tmp_path / "runs", asyncio.Semaphore(1),
+                                   keep=False, scene_active=True))
+        case_output = tmp_path / "runs/cases/agent-failure"
+        assert result["exit_code"] == 1
+        assert (case / "output/response.txt").read_text() == ""
+        assert (case_output / "agent-response.txt").read_text() == "I found one blocker, but have not finished."
+        failure = json.loads((case_output / "failure.json").read_text())
+        assert failure["phase"] == "agent-exec"
+        assert "malformed tool call" in failure["error"]
 
     def test_run_case_passes_env_to_exec(self, tmp_path):
         """Verify sandbox.exec receives forwarded env vars."""
@@ -744,6 +881,38 @@ class TestOpenclawEvalConfig:
         assert "claude-sonnet" in ids
         assert inf["api"] == "openai-completions"
         assert inf["baseUrl"] == "https://inference.local/v1"
+
+    def test_forge_eval_config_preserves_restricted_batch_reader(self):
+        cfg, qualified = build_openclaw_eval_config(
+            self._WXNB_PROVIDERS, "claude-sonnet", forge_image=True
+        )
+        assert qualified == "inference/claude-sonnet"
+        assert cfg["agents"]["ownership"] == "explicit"
+        for owner in ("heartbeat", "systemAgent", "authInheritance"):
+            assert cfg["agents"]["defaults"][owner] == {"agentId": "main"}
+        assert cfg["talk"] == {"agentId": "main"}
+        entries = cfg["agents"]["entries"]
+        assert set(entries) == {"main", "brief-reader"}
+        assert entries["main"]["workspace"] == "/sandbox"
+        assert entries["main"]["subagents"]["allowAgents"] == ["brief-reader"]
+        assert "sessions_spawn" in entries["main"]["tools"]["allow"]
+        assert "sessions_yield" in entries["main"]["tools"]["allow"]
+        assert entries["brief-reader"] == {
+            "workspace": "/sandbox", "tools": {"allow": ["read", "write"]}
+        }
+        assert cfg["tools"]["fs"]["workspaceOnly"] is True
+        assert "web_fetch" in cfg["tools"]["deny"]
+        assert cfg["gateway"] == {
+            "mode": "local", "bind": "loopback", "auth": {"mode": "token"}
+        }
+
+    def test_non_forge_eval_config_does_not_add_agent_profiles(self):
+        cfg, _ = build_openclaw_eval_config(
+            self._WXNB_PROVIDERS, "claude-sonnet"
+        )
+        assert "entries" not in cfg["agents"]
+        assert "tools" not in cfg
+        assert "gateway" not in cfg
 
     def test_cluster_litellm_provider(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "mock")
