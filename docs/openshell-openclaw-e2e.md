@@ -539,6 +539,23 @@ openshell sandbox list
 
 ---
 
+### Configure the OpenClaw LLM preflight budget
+
+The in-sandbox LLM preflight makes a separate, short provider request before
+the agent runs. It uses 512 output tokens by default. To override that request,
+set a positive integer in the evaluation's `eval.yaml`:
+
+```yaml
+runner:
+  type: openclaw
+  settings:
+    llm_preflight_max_tokens: 1024
+```
+
+This setting does not change the agent model's `maxTokens` or the PipelineRun's
+inbox cap. Pin an evaluation revision containing the setting when running in
+Tekton. The preflight log records the selected `max_tokens` value.
+
 ## Part 6 — Inspect and prove AEH + OpenShell + OpenClaw
 
 Set `SB` to one kept sandbox from your log (example only):
